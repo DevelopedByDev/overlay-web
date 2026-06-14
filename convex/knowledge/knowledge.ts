@@ -8,7 +8,7 @@ import {
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import { calculateEmbeddingCostOrNull } from '../../src/shared/ai/gateway/model-pricing'
+import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 
 export type HybridSearchChunk = {
@@ -294,7 +294,7 @@ export const reindexFileInternal = internalAction({
     const serverSecret = getServerSecretForBackground()
     if (!serverSecret) return
     const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
-    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
     const reservationId = `embedding_${crypto.randomUUID()}`
     try {
@@ -333,7 +333,7 @@ export const reindexFileInternal = internalAction({
           embedding: allEmb[i]!,
         })),
       })
-      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, totalTokens || estimatedTokens)
+      const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, totalTokens || estimatedTokens)
       if (actualCostUsd === null) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
           serverSecret,
@@ -412,7 +412,7 @@ export const reindexMemoryInternal = internalAction({
     const serverSecret = getServerSecretForBackground()
     if (!serverSecret) return
     const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
-    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
     const reservationId = `embedding_${crypto.randomUUID()}`
     try {
@@ -445,7 +445,7 @@ export const reindexMemoryInternal = internalAction({
           embedding: embedded.vectors[i]!,
         })),
       })
-      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, promptTokens || estimatedTokens)
+      const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, promptTokens || estimatedTokens)
       if (actualCostUsd === null) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
           serverSecret,
@@ -563,7 +563,7 @@ export const hybridSearch = action({
     }
 
     const estimatedTokens = estimateEmbeddingTokens([q])
-    const estimatedCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, estimatedTokens)
+    const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) {
       throw new Error('pricing_missing: embedding model')
     }
@@ -604,7 +604,7 @@ export const hybridSearch = action({
 
     {
       const actualTokens = promptTokens || estimatedTokens
-      const actualCostUsd = calculateEmbeddingCostOrNull(EMBEDDING_MODEL, actualTokens)
+      const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, actualTokens)
       if (actualCostUsd === null) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
           serverSecret,

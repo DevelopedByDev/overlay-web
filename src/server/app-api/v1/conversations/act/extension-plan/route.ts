@@ -10,7 +10,8 @@ import {
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { isPremiumModel } from '@/server/ai/pricing'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {
@@ -402,7 +403,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const maxOutputTokens = 1200
     let reservationId: string | null = null
     if (paid && isPremiumModel(effectiveModelId)) {
-      const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
+      const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+        effectiveModelId,
+        estimatedInputTokens,
+        0,
+        maxOutputTokens,
+      )
       if (estimatedProviderCostUsd === null) {
         return NextResponse.json(
           { error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` },
@@ -444,7 +450,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
       const inputTokens = usage?.inputTokens ?? estimatedInputTokens
       const outputTokens = usage?.outputTokens ?? maxOutputTokens
-      const actualCostUsd = calculateTokenCostOrNull(effectiveModelId, inputTokens, 0, outputTokens)
+      const actualCostUsd = await calculateLanguageModelTokenCostOrNull(
+        effectiveModelId,
+        inputTokens,
+        0,
+        outputTokens,
+      )
       if (actualCostUsd === null) {
         await markProviderBudgetReconcile({
           userId: auth.userId,

@@ -7,7 +7,7 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateTokenCostOrNull } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const userPrompt = `Give a very short Chrome tab group name (at most 3 words, no punctuation) summarizing:\n\n${text.slice(0, 400)}`
     const estimatedInputTokens = Math.ceil(userPrompt.length / 4) + 80
     const estimatedOutputTokens = 32
-    const estimatedCostUsd = calculateTokenCostOrNull(TAB_GROUP_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
+    const estimatedCostUsd = await calculateLanguageModelTokenCostOrNull(TAB_GROUP_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
     if (estimatedCostUsd === null) {
       return NextResponse.json({ title: fallback })
     }
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
       const inputTokens = usage?.inputTokens ?? estimatedInputTokens
       const outputTokens = usage?.outputTokens ?? estimatedOutputTokens
-      const actualCostUsd = calculateTokenCostOrNull(TAB_GROUP_MODEL, inputTokens, 0, outputTokens)
+      const actualCostUsd = await calculateLanguageModelTokenCostOrNull(TAB_GROUP_MODEL, inputTokens, 0, outputTokens)
       if (actualCostUsd === null) {
         await markProviderBudgetReconcile({
           userId: auth.userId,

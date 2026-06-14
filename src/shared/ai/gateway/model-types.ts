@@ -10,19 +10,7 @@ export type VideoSubMode =
 export interface ChatModel {
   id: string
   name: string
-  provider:
-    | 'openai'
-    | 'anthropic'
-    | 'google'
-    | 'minimax'
-    | 'groq'
-    | 'xai'
-    | 'openrouter'
-    | 'moonshotai'
-    | 'zai'
-    | 'alibaba'
-    | 'nvidia'
-    | 'deepseek'
+  provider: string
   description?: string
   intelligence: number
   /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */

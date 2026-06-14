@@ -18,7 +18,8 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { isPremiumModel } from '@/server/ai/pricing'
 import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
@@ -272,7 +273,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
     const estimatedInputTokens = Math.ceil((frozenNoteLines.length + message.length + NOTEBOOK_AGENT_PROMPT.length) / 4) + 2_000
     const maxOutputTokens = 8_192
-    const estimatedProviderCostUsd = calculateTokenCostOrNull(effectiveModelId, estimatedInputTokens, 0, maxOutputTokens)
+    const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+      effectiveModelId,
+      estimatedInputTokens,
+      0,
+      maxOutputTokens,
+    )
     if (estimatedProviderCostUsd === null) {
       return new Response(
         JSON.stringify({ error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` }),
@@ -354,7 +360,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        const totalInputTokens = totalUsage?.inputTokens ?? 0
 	        const totalOutputTokens = totalUsage?.outputTokens ?? 0
 	        const cachedTokens = totalUsage?.inputTokenDetails?.cacheReadTokens ?? 0
-	        const providerCostUsd = calculateTokenCostOrNull(effectiveModelId, totalInputTokens, cachedTokens, totalOutputTokens)
+	        const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
+	          effectiveModelId,
+	          totalInputTokens,
+	          cachedTokens,
+	          totalOutputTokens,
+	        )
 	        if (providerCostUsd === null) {
 	          if (budgetReservationId) {
 	            await markProviderBudgetReconcile({

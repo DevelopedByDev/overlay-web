@@ -23,9 +23,18 @@ export default defineSchema({
     onlyAllowZdrModels: v.optional(v.boolean()),
     dismissedZdrWarningGlobally: v.optional(v.boolean()),
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
+    enabledChatModelIds: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
+
+  gatewayCatalogSnapshots: defineTable({
+    key: v.string(),
+    source: v.string(),
+    modelsJson: v.string(),
+    fetchedAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_key', ['key']),
 
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)

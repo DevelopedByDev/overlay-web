@@ -97,6 +97,7 @@ import {
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
@@ -228,10 +229,10 @@ export default function ChatExperience({
       ? rawEmbedProjectId
       : null
   const { settings, updateSettings } = useAppSettings()
+  useGatewayModelCatalog()
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser, isLoading: authLoading } = useAuth()
-  const authUserId = authUser?.id ?? null
   const convexAccessToken = useConvexWorkOSToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
@@ -463,6 +464,7 @@ export default function ChatExperience({
     billingEnabled,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
+    enabledModelIds: settings.enabledChatModelIds,
     pathname,
     router,
     searchParams,
@@ -1378,9 +1380,9 @@ export default function ChatExperience({
 
   useEffect(() => {
     if (authLoading) return
-    if (initialChats === undefined || (!userId && authUserId)) void loadChats()
+    if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
     void loadSubscription()
-  }, [authLoading, authUserId, initialChats, loadChats, loadSubscription, userId])
+  }, [authLoading, authUser?.id, initialChats, loadChats, loadSubscription, userId])
 
   useEffect(() => {
     if (!activeChatId) return

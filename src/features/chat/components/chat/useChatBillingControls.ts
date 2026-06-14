@@ -8,7 +8,7 @@ import {
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
 import {
-  getModelsByIntelligence,
+  getEnabledChatModels,
   modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -43,6 +43,7 @@ export function useChatBillingControls({
   billingEnabled,
   chatPrefsHydrated,
   onlyAllowZdrModels,
+  enabledModelIds,
   pathname,
   router,
   searchParams,
@@ -57,6 +58,7 @@ export function useChatBillingControls({
   billingEnabled: boolean
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
+  enabledModelIds: readonly string[]
   pathname: string
   router: ChatRouter
   searchParams: ChatSearchParams
@@ -82,20 +84,21 @@ export function useChatBillingControls({
   const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
   const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
   const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
+  const isModelAccessRestricted = isFreeTier
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
   const selectableTextModels = useMemo(() => {
-    const models = getModelsByIntelligence(isFreeTier)
+    const models = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     return effectiveOnlyAllowZdrModels
       ? models.filter((model) => model.supportsZeroDataRetention)
       : models
-  }, [effectiveOnlyAllowZdrModels, isFreeTier])
+  }, [effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted])
   const premiumModelBlocked =
-    isFreeTier && !isFreeTierChatModelId(selectedActModel)
+    isModelAccessRestricted && !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked
 
   useEffect(() => {
-    if (!chatPrefsHydrated || !isFreeTier || activeChatId) return
+    if (!chatPrefsHydrated || !isModelAccessRestricted || activeChatId) return
     if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
 
     setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
@@ -104,7 +107,7 @@ export function useChatBillingControls({
   }, [
     activeChatId,
     chatPrefsHydrated,
-    isFreeTier,
+    isModelAccessRestricted,
     selectedActModel,
     setAskModelSelectionMode,
     setSelectedActModel,

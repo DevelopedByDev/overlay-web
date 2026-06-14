@@ -1,91 +1,56 @@
-import 'server-only'
-
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { AVAILABLE_MODELS, IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
 import {
-  calculateEmbeddingCostOrNull,
-  calculateImageCostOrNull,
-  calculateTokenCost,
-  calculateTokenCostOrNull,
-  calculateVideoCostOrNull,
-  estimateTokenCost,
-  getPricingSnapshotMetadata,
+  calculateGatewayEmbeddingCostOrNull,
+  calculateGatewayImageCostOrNull,
+  calculateGatewayLanguageTokenCostOrNull,
+  calculateGatewayVideoCostOrNull,
   isExplicitFreeModel,
   isPremiumModel,
-  isPricedLanguageModel,
-} from './model-pricing'
+} from '@/shared/ai/gateway/model-pricing'
 
-const HELPER_LANGUAGE_MODELS = [
-  'nvidia/nemotron-nano-9b-v2',
-  'openai/gpt-oss-20b',
-  'google/gemini-2.5-flash-lite',
-] as const
+test('language pricing uses Gateway per-token rates', () => {
+  const cost = calculateGatewayLanguageTokenCostOrNull({
+    input: '0.0000003',
+    input_cache_read: '0.00000006',
+    output: '0.0000012',
+  }, 1_000_000, 100_000, 250_000)
 
-const EMBEDDING_MODELS = ['openai/text-embedding-3-small'] as const
-
-test('generated pricing snapshot is present', () => {
-  const metadata = getPricingSnapshotMetadata()
-  assert.equal(metadata.source, 'https://ai-gateway.vercel.sh/v1/models')
-  assert.match(metadata.generatedAt, /^\d{4}-\d{2}-\d{2}T/)
+  assert.equal(cost, 0.576)
 })
 
-test('missing pricing fails closed instead of returning zero', () => {
-  assert.equal(calculateTokenCostOrNull('unknown/provider-model', 1000, 0, 1000), null)
-  assert.equal(calculateImageCostOrNull('unknown/image-model'), null)
-  assert.equal(calculateVideoCostOrNull('unknown/video-model', 8), null)
-  assert.throws(() => calculateTokenCost('unknown/provider-model', 1000, 0, 1000), /pricing/i)
-})
-
-test('paid models cannot be misclassified as free', () => {
-  assert.equal(isPremiumModel('qwen/qwen3.6-plus'), true)
-  assert.equal(isExplicitFreeModel('qwen/qwen3.6-plus'), false)
-  assert.ok((calculateTokenCostOrNull('qwen/qwen3.6-plus', 1000, 0, 1000) ?? 0) > 0)
-  assert.ok((calculateTokenCostOrNull('anthropic/claude-opus-4.7', 1000, 0, 1000) ?? 0) > 0)
-})
-
-test('tiered and cached-token pricing are nonzero when the snapshot provides them', () => {
-  const uncached = calculateTokenCostOrNull('alibaba/qwen3.6-plus', 300_000, 0, 1_000)
-  const cached = calculateTokenCostOrNull('alibaba/qwen3.6-plus', 300_000, 300_000, 1_000)
+test('tiered and cached token pricing are applied', () => {
+  const pricing = {
+    input: '0.000001',
+    input_cache_read: '0.0000001',
+    output: '0.000002',
+  }
+  const uncached = calculateGatewayLanguageTokenCostOrNull(pricing, 300_000, 0, 1_000)
+  const cached = calculateGatewayLanguageTokenCostOrNull(pricing, 300_000, 300_000, 1_000)
   assert.ok(uncached !== null && uncached > 0)
   assert.ok(cached !== null && cached > 0)
   assert.ok(cached < uncached)
 })
 
-test('image, video, and embedding provider spend is priced', () => {
-  assert.ok((calculateImageCostOrNull('bytedance/seedream-4.5') ?? 0) > 0)
-  assert.ok((calculateImageCostOrNull('openai/gpt-image-1.5') ?? 0) > 0)
-  assert.ok((calculateVideoCostOrNull('google/veo-3.1-generate-001', 8) ?? 0) > 0)
-  assert.ok((calculateVideoCostOrNull('klingai/kling-v2.6-t2v', 5) ?? 0) > 0)
-  assert.ok((calculateEmbeddingCostOrNull('openai/text-embedding-3-small', 1000) ?? 0) > 0)
+test('missing API pricing fails closed', () => {
+  assert.equal(calculateGatewayLanguageTokenCostOrNull({}, 1000, 0, 1000), null)
+  assert.equal(calculateGatewayEmbeddingCostOrNull({}, 1000), null)
+  assert.equal(calculateGatewayImageCostOrNull('unknown/image-model', {}), null)
+  assert.equal(calculateGatewayVideoCostOrNull({}, 8), null)
 })
 
-test('all callable chat/helper/background models have explicit free or paid pricing', () => {
-  for (const model of AVAILABLE_MODELS) {
-    assert.equal(
-      isExplicitFreeModel(model.id) || isPricedLanguageModel(model.id),
-      true,
-      `${model.id} must be explicit-free or priced`,
-    )
-  }
-
-  for (const modelId of HELPER_LANGUAGE_MODELS) {
-    const estimate = estimateTokenCost(modelId, 1000, 0, 1000)
-    assert.ok(estimate && estimate.providerCostUsd > 0, `${modelId} must have paid helper pricing`)
-  }
+test('media and embedding calculators use Gateway fields', () => {
+  assert.equal(calculateGatewayImageCostOrNull('example/image', { image: '0.04' }), 0.04)
+  assert.equal(calculateGatewayVideoCostOrNull({
+    video_duration_pricing: [{ cost_per_second: '0.15' }],
+  }, 8), 1.2)
+  assert.equal(calculateGatewayEmbeddingCostOrNull({ input: '0.00000002' }, 1_000), 0.00002)
 })
 
-test('all media and embedding models used by the app are priced', () => {
-  for (const model of IMAGE_MODELS) {
-    assert.ok((calculateImageCostOrNull(model.id) ?? 0) > 0, `${model.id} image pricing missing`)
-  }
-
-  for (const model of VIDEO_MODELS) {
-    assert.ok((calculateVideoCostOrNull(model.id, model.defaultDuration ?? 8) ?? 0) > 0, `${model.id} video pricing missing`)
-  }
-
-  for (const modelId of EMBEDDING_MODELS) {
-    assert.ok((calculateEmbeddingCostOrNull(modelId, 1000) ?? 0) > 0, `${modelId} embedding pricing missing`)
-  }
+test('only explicit free models bypass premium usage', () => {
+  assert.equal(isExplicitFreeModel('openrouter/free'), true)
+  assert.equal(isPremiumModel('openrouter/free'), false)
+  assert.equal(isExplicitFreeModel('example/new-gateway-model'), false)
+  assert.equal(isPremiumModel('example/new-gateway-model'), true)
 })

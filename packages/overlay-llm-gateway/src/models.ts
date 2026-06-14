@@ -17,31 +17,78 @@ export interface OverlayModelInfo extends ModelInfo {
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
-export const BUILT_IN_MODELS: OverlayModelInfo[] = [
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 57.2, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 4.5, medianOutputTokensPerSecond: 119.867 },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 20.6, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 0.85, medianOutputTokensPerSecond: 186.767 },
-  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 18.8, cost: 1, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 0.537, medianOutputTokensPerSecond: 50.262 },
-  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 56.8, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 5.625, medianOutputTokensPerSecond: 75.645 },
-  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 13.8, cost: 1, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0.138, medianOutputTokensPerSecond: 120.344 },
-  { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 17.3, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 4.375, medianOutputTokensPerSecond: 121.61 },
-  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'anthropic', description: 'Most capable', intelligence: 57.3, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 10.938, medianOutputTokensPerSecond: 55.247 },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 44.4, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 6.563, medianOutputTokensPerSecond: 53.877 },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 31.1, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 2.188, medianOutputTokensPerSecond: 102.293 },
-  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 49.3, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 3.0, medianOutputTokensPerSecond: 98.293 },
-  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', description: 'Flagship reasoning', intelligence: 51.5, cost: 2, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 2.175, medianOutputTokensPerSecond: 34.389 },
-  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', description: 'Fast reasoning', intelligence: 46.5, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0.175, medianOutputTokensPerSecond: 72.385 },
-  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 49.6, cost: 1, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0.525, medianOutputTokensPerSecond: 46.283 },
-  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 46.8, cost: 2, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 1.136, medianOutputTokensPerSecond: 48.829 },
-  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 42.1, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 1.0, medianOutputTokensPerSecond: 90.037 },
-  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 50.0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 1.125, medianOutputTokensPerSecond: 52.674 },
-  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 33.3, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true, pricePer1mTokens: 0.262, medianOutputTokensPerSecond: 244.453 },
-  { id: 'nvidia/nemotron-nano-9b-v2', name: 'Nemotron Nano 9B', provider: 'nvidia', description: 'Ultra-cheap summarization & tool-calling', intelligence: 13.2, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: false, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0.086, medianOutputTokensPerSecond: 132.545 },
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 25.0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 100.0 },
-  { id: 'openrouter/moonshotai/kimi-k2.6:free', name: 'Free: Kimi K2.6', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 46.8, cost: 0, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/z-ai/glm-4.5-air:free', name: 'Free: GLM 4.5 Air', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 35.0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', description: 'Free OpenRouter model', intelligence: 34.5, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', description: 'Free model', intelligence: 45.0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
+type MinimalModelDefinition = readonly [
+  id: string,
+  name: string,
+  provider: string,
+  supportsVision?: boolean,
+  supportsReasoning?: boolean,
 ]
+
+// Runtime Gateway metadata and pricing come from /v1/models. These definitions only
+// keep direct-provider adapters usable before a Gateway catalog has been loaded.
+const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
+  ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro', 'google', true, true],
+  ['gemini-3-flash-preview', 'Gemini 3 Flash', 'google', true, true],
+  ['google/gemma-4-26b-a4b-it', 'Gemma 4 26B A4B', 'google', true, true],
+  ['gpt-5.4', 'GPT-5.4', 'openai', true, true],
+  ['openai/gpt-5.4-mini', 'GPT-5.4 Mini', 'openai', true, true],
+  ['gpt-4.1-2025-04-14', 'GPT-4.1', 'openai', true, true],
+  ['anthropic/claude-opus-4.7', 'Claude Opus 4.7', 'anthropic', true, true],
+  ['claude-sonnet-4-6', 'Claude Sonnet 4.6', 'anthropic', true, true],
+  ['claude-haiku-4-5', 'Claude Haiku 4.5', 'anthropic', true, true],
+  ['xai/grok-4.20-reasoning', 'Grok 4.20', 'xai', true, true],
+  ['deepseek/deepseek-v4-pro', 'DeepSeek V4 Pro', 'deepseek', false, true],
+  ['deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek', false, true],
+  ['minimax/minimax-m2.7', 'MiniMax M2.7', 'minimax', false, true],
+  ['moonshotai/kimi-k2.6', 'Kimi K2.6', 'moonshotai', true, true],
+  ['z-ai/glm-5.1', 'GLM 5.1', 'zai', false, true],
+  ['qwen/qwen3.6-plus', 'Qwen 3.6 Plus', 'alibaba', false, true],
+  ['openai/gpt-oss-120b', 'GPT OSS 120B', 'groq', false, true],
+  ['nvidia/nemotron-nano-9b-v2', 'Nemotron Nano 9B', 'nvidia'],
+  [FREE_TIER_AUTO_MODEL_ID, 'Free Router', 'openrouter', true, true],
+  ['openrouter/moonshotai/kimi-k2.6:free', 'Free: Kimi K2.6', 'openrouter', true, true],
+  ['openrouter/z-ai/glm-4.5-air:free', 'Free: GLM 4.5 Air', 'openrouter', false, true],
+  ['openrouter/nvidia/nemotron-3-super-120b-a12b:free', 'Free: Nemotron 3 Super 120B', 'openrouter', false, true],
+  ['stepfun-ai/step-3.5-flash', 'Free: Step 3.5 Flash', 'nvidia', false, true],
+]
+
+const FREE_MODEL_IDS = new Set([
+  FREE_TIER_AUTO_MODEL_ID,
+  'openrouter/moonshotai/kimi-k2.6:free',
+  'openrouter/z-ai/glm-4.5-air:free',
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
+  'stepfun-ai/step-3.5-flash',
+])
+
+const ZDR_MODEL_IDS = new Set([
+  'gemini-3.1-pro-preview',
+  'gemini-3-flash-preview',
+  'google/gemma-4-26b-a4b-it',
+  'anthropic/claude-opus-4.7',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'openai/gpt-oss-120b',
+])
+
+export const BUILT_IN_MODELS: OverlayModelInfo[] = MODEL_DEFINITIONS.map(([
+  id,
+  name,
+  provider,
+  supportsVision = false,
+  supportsReasoning = false,
+]) => ({
+  id,
+  name,
+  provider,
+  intelligence: 0,
+  cost: FREE_MODEL_IDS.has(id) ? 0 : 1,
+  speedTier: 2,
+  supportsVision,
+  supportsReasoning,
+  supportsSearch: false,
+  supportsZeroDataRetention: ZDR_MODEL_IDS.has(id),
+}))
 
 export const MODEL_ID_ALIASES: Record<string, string> = {
   'claude-opus-4-6': 'anthropic/claude-opus-4.7',
@@ -87,6 +134,5 @@ export function listModelInfo(
     supportsReasoning: model.supportsReasoning,
     supportsSearch: model.supportsSearch,
     supportsZeroDataRetention: model.supportsZeroDataRetention,
-    pricePer1mTokens: model.pricePer1mTokens,
   }))
 }

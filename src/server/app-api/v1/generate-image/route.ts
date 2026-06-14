@@ -8,7 +8,7 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { getGatewayImageModel } from '@/server/ai/model-runtime'
 import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
-import { calculateImageCostOrNull } from '@/server/ai/pricing'
+import { calculateImageModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { uploadBuffer, keyForOutput } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { deleteObject } from '@/server/storage/object-store'
@@ -80,7 +80,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const priorityList = modelId
       ? [modelId]
       : IMAGE_MODELS.map((m) => m.id)
-    const pricedPriorityList = priorityList.filter((candidateId) => calculateImageCostOrNull(candidateId) !== null)
+    const priceEntries = await Promise.all(
+      priorityList.map(async (candidateId) => [
+        candidateId,
+        await calculateImageModelCostOrNull(candidateId),
+      ] as const),
+    )
+    const priceByModelId = new Map(priceEntries)
+    const pricedPriorityList = priorityList.filter((candidateId) => priceByModelId.get(candidateId) !== null)
     if (pricedPriorityList.length === 0) {
       return NextResponse.json(
         { error: 'pricing_missing', message: 'Image generation is temporarily unavailable because model pricing is missing.' },
@@ -94,7 +101,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) => calculateImageCostOrNull(candidateId) ?? 0))
+    const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) => priceByModelId.get(candidateId) ?? 0))
     const reservation = await reserveProviderBudget({
       userId: auth.userId,
       entitlements: currentEntitlements,
@@ -153,7 +160,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const finalModelId = usedModelId
 
     const recordUsage = async () => {
-      const costDollars = calculateImageCostOrNull(finalModelId)
+      const costDollars = priceByModelId.get(finalModelId) ?? null
       if (costDollars === null) {
         await markProviderBudgetReconcile({
           userId: auth.userId,

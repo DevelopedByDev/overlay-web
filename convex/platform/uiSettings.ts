@@ -9,6 +9,7 @@ const chatStreamingModeValidator = v.literal('token')
 const themePresetValidator = v.optional(v.string())
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
+const MAX_ENABLED_MODEL_IDS = 400
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
 const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
 const uiSettingsValidator = v.object({
@@ -31,6 +32,7 @@ const uiSettingsValidator = v.object({
   onlyAllowZdrModels: v.boolean(),
   dismissedZdrWarningGlobally: v.boolean(),
   dismissedZdrWarningModelIds: v.array(v.string()),
+  enabledChatModelIds: v.array(v.string()),
 })
 
 function defaultUiSettings() {
@@ -49,6 +51,7 @@ function defaultUiSettings() {
     onlyAllowZdrModels: false,
     dismissedZdrWarningGlobally: false,
     dismissedZdrWarningModelIds: [] as string[],
+    enabledChatModelIds: [] as string[],
   }
 }
 
@@ -113,6 +116,7 @@ export const getByServer = query({
       onlyAllowZdrModels: existing.onlyAllowZdrModels ?? false,
       dismissedZdrWarningGlobally: existing.dismissedZdrWarningGlobally ?? false,
       dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
+      enabledChatModelIds: safeModelIds(existing.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ?? [],
     }
     return {
       ...settings,
@@ -149,6 +153,7 @@ export const upsertByServer = mutation({
     onlyAllowZdrModels: v.optional(v.boolean()),
     dismissedZdrWarningGlobally: v.optional(v.boolean()),
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
+    enabledChatModelIds: v.optional(v.array(v.string())),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -175,6 +180,10 @@ export const upsertByServer = mutation({
       dismissedZdrWarningModelIds:
         safeModelIds(args.dismissedZdrWarningModelIds, 100) ??
         safeModelIds(existing?.dismissedZdrWarningModelIds, 100) ??
+        [],
+      enabledChatModelIds:
+        safeModelIds(args.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ??
+        safeModelIds(existing?.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ??
         [],
     }
     const optionalNext = {

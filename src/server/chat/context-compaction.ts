@@ -2,8 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { UIMessage } from 'ai'
-import { getModel } from '@/shared/ai/gateway/model-data'
-import { getGatewayModelPricing } from '@/server/ai/pricing'
+import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -16,24 +15,9 @@ const CONTEXT_TRIGGER_RATIO = 0.8
 const CONTEXT_TARGET_RATIO = 0.2
 const PRESERVED_RECENT_MESSAGES = 2
 const FALLBACK_CONTEXT_WINDOW = 128_000
-const LIVE_MODEL_CACHE_TTL_MS = 10 * 60_000
 const MAX_SUMMARY_OUTPUT_TOKENS = 12_000
 const MIN_SUMMARY_OUTPUT_TOKENS = 800
 const BASE_SYSTEM_TOOL_OVERHEAD_TOKENS = 2_000
-
-type GatewayModelListEntry = {
-  id?: string
-  context_window?: number
-  contextWindow?: number
-  max_tokens?: number
-}
-
-type LiveGatewayModelsCache = {
-  fetchedAt: number
-  byId: Map<string, GatewayModelListEntry>
-}
-
-let liveGatewayModelsCache: LiveGatewayModelsCache | null = null
 
 export type ContextSummarySnapshot = {
   summary: string
@@ -100,48 +84,6 @@ function transcriptForSummary(messages: UIMessage[]): string {
     .join('\n\n')
 }
 
-function contextWindowFromEntry(entry: GatewayModelListEntry | undefined): number | null {
-  const raw = entry?.context_window ?? entry?.contextWindow
-  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null
-}
-
-async function getLiveGatewayModels(): Promise<Map<string, GatewayModelListEntry> | null> {
-  const now = Date.now()
-  if (liveGatewayModelsCache && now - liveGatewayModelsCache.fetchedAt < LIVE_MODEL_CACHE_TTL_MS) {
-    return liveGatewayModelsCache.byId
-  }
-  try {
-    const response = await fetch('https://ai-gateway.vercel.sh/v1/models', {
-      cache: 'no-store',
-    })
-    if (!response.ok) return liveGatewayModelsCache?.byId ?? null
-    const payload = await response.json() as { data?: GatewayModelListEntry[] }
-    const byId = new Map<string, GatewayModelListEntry>()
-    for (const model of payload.data ?? []) {
-      if (typeof model.id === 'string') byId.set(model.id, model)
-    }
-    liveGatewayModelsCache = { fetchedAt: now, byId }
-    return byId
-  } catch (_error) {
-    return liveGatewayModelsCache?.byId ?? null
-  }
-}
-
-async function gatewayIdCandidates(modelId: string): Promise<string[]> {
-  const out = new Set<string>([modelId])
-  try {
-    const { getGatewayModelId } = await import('@/server/ai/model-runtime')
-    out.add(getGatewayModelId(modelId))
-  } catch (_error) {
-    // Non-Gateway models fall back to snapshot/manual metadata.
-  }
-  const pricing = getGatewayModelPricing(modelId)
-  if (pricing?.id) out.add(pricing.id)
-  const catalog = getModel(modelId)
-  if (catalog?.id) out.add(catalog.id)
-  return [...out]
-}
-
 function manualContextWindow(modelId: string): number | null {
   if (modelId === FREE_TIER_AUTO_MODEL_ID) return FALLBACK_CONTEXT_WINDOW
   if (modelId === FREE_TIER_DEFAULT_MODEL_ID) return FALLBACK_CONTEXT_WINDOW
@@ -151,18 +93,8 @@ function manualContextWindow(modelId: string): number | null {
 }
 
 export async function resolveModelContextWindow(modelId: string): Promise<number> {
-  const liveModels = await getLiveGatewayModels()
-  if (liveModels) {
-    for (const candidate of await gatewayIdCandidates(modelId)) {
-      const contextWindow = contextWindowFromEntry(liveModels.get(candidate))
-      if (contextWindow) return contextWindow
-    }
-  }
-
-  const gatewayPricingWindow = getGatewayModelPricing(modelId)?.contextWindow
-  if (typeof gatewayPricingWindow === 'number' && gatewayPricingWindow > 0) {
-    return Math.floor(gatewayPricingWindow)
-  }
+  const model = await getGatewayCatalogModel(modelId).catch((_error) => null)
+  if (model?.contextWindow && model.contextWindow > 0) return Math.floor(model.contextWindow)
 
   return manualContextWindow(modelId) ?? FALLBACK_CONTEXT_WINDOW
 }

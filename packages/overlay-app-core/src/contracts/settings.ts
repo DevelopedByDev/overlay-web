@@ -64,6 +64,8 @@ export interface AppSettings {
   onlyAllowZdrModels: boolean
   dismissedZdrWarningGlobally: boolean
   dismissedZdrWarningModelIds: string[]
+  /** Chat model IDs shown in the user's model picker. Empty uses the curated default list. */
+  enabledChatModelIds: string[]
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -85,6 +87,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   onlyAllowZdrModels: false,
   dismissedZdrWarningGlobally: false,
   dismissedZdrWarningModelIds: [],
+  enabledChatModelIds: [],
 }
 
 export interface ChatModel {

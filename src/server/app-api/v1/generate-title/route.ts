@@ -8,7 +8,7 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateTokenCostOrNull } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const estimatedInputTokens = Math.ceil(Math.min(text.length, 1200) / 4) + 80
     const estimatedOutputTokens = 80
-    const estimatedCostUsd = calculateTokenCostOrNull(TITLE_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
+    const estimatedCostUsd = await calculateLanguageModelTokenCostOrNull(TITLE_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
     if (estimatedCostUsd === null) {
       return NextResponse.json({ error: 'pricing_missing', message: 'Title generation model pricing is missing.' }, { status: 500 })
     }
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
     const inputTokens = usage?.inputTokens ?? estimatedInputTokens
     const outputTokens = usage?.outputTokens ?? estimatedOutputTokens
-    const actualCostUsd = calculateTokenCostOrNull(TITLE_MODEL, inputTokens, 0, outputTokens)
+    const actualCostUsd = await calculateLanguageModelTokenCostOrNull(TITLE_MODEL, inputTokens, 0, outputTokens)
     if (actualCostUsd === null) {
       await markProviderBudgetReconcile({
         userId: auth.userId,

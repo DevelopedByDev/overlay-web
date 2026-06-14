@@ -59,7 +59,6 @@
     "test:auth:refresh": "node --experimental-strip-types scripts/auth-refresh-check.ts",
     "test:automations": "tsx --test packages/overlay-app-core/src/automations.test.ts",
     "test:billing": "node --test --experimental-strip-types src/shared/billing/billing-pricing.test.ts",
-    "pricing:sync": "node --experimental-strip-types scripts/sync-vercel-ai-gateway-pricing.ts",
     "test:pricing": "tsx --test src/server/ai/gateway/model-pricing.test.ts",
     "test:gateway-contracts": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/ai/gateway/gateway-runtime.test.ts src/server/ai/gateway/gateway-search-tools.test.ts src/server/ai/gateway/openrouter-service.test.ts src/server/ai/gateway/tool-schema-compat.test.ts src/server/tools/tools/build.test.ts src/server/app-api/v1/conversations/act/tooling.test.ts",
     "test:gateway-canary": "NODE_OPTIONS=--conditions=react-server tsx scripts/vercel-ai-gateway-canary.ts",

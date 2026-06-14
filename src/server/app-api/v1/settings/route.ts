@@ -8,6 +8,7 @@ import { isThemePresetId } from '@/shared/app/themes'
 
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
+const MAX_ENABLED_MODEL_IDS = 400
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
 const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
 
@@ -78,6 +79,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       onlyAllowZdrModels?: boolean
       dismissedZdrWarningGlobally?: boolean
       dismissedZdrWarningModelIds?: string[]
+      enabledChatModelIds?: string[]
       /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
@@ -159,6 +161,14 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid dismissedZdrWarningModelIds' }, { status: 400 })
     }
     if (
+      body.enabledChatModelIds !== undefined &&
+      (!Array.isArray(body.enabledChatModelIds) ||
+        body.enabledChatModelIds.length > MAX_ENABLED_MODEL_IDS ||
+        !body.enabledChatModelIds.every(isSafeModelId))
+    ) {
+      return NextResponse.json({ error: 'Invalid enabledChatModelIds' }, { status: 400 })
+    }
+    if (
       body.chatStreamingMode !== undefined &&
       body.chatStreamingMode !== 'token' &&
       body.chatStreamingMode !== 'chunk'
@@ -188,6 +198,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       onlyAllowZdrModels?: boolean
       dismissedZdrWarningGlobally?: boolean
       dismissedZdrWarningModelIds?: string[]
+      enabledChatModelIds?: string[]
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -243,6 +254,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.dismissedZdrWarningModelIds !== undefined) {
       mutationArgs.dismissedZdrWarningModelIds = Array.from(new Set(body.dismissedZdrWarningModelIds.map((id) => id.trim()))).slice(0, 100)
+    }
+    if (body.enabledChatModelIds !== undefined) {
+      mutationArgs.enabledChatModelIds = Array.from(new Set(body.enabledChatModelIds.map((id) => id.trim()))).slice(0, MAX_ENABLED_MODEL_IDS)
     }
 
     const settings = await convex.mutation<AppSettings>(

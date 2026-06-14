@@ -8,7 +8,7 @@ import { convex } from '@/server/database/convex'
 import { getGatewayVideoModel } from '@/server/ai/model-runtime'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
 import { getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
-import { calculateVideoCostOrNull } from '@/server/ai/pricing'
+import { calculateVideoModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import type { Entitlements } from '@/shared/app/app-contracts'
@@ -136,8 +136,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
         const subModeModels = allowedModels
         const priorityList = [selectedModelId, ...subModeModels.filter((id) => id !== selectedModelId)]
+        const priceEntries = await Promise.all(
+          priorityList.map(async (candidateId) => [
+            candidateId,
+            await calculateVideoModelCostOrNull(
+              candidateId,
+              clampDurationForModel(candidateId, rawDuration),
+            ),
+          ] as const),
+        )
+        const priceByModelId = new Map(priceEntries)
         const pricedPriorityList = priorityList.filter((candidateId) =>
-          calculateVideoCostOrNull(candidateId, clampDurationForModel(candidateId, rawDuration)) !== null,
+          priceByModelId.get(candidateId) !== null,
         )
         if (pricedPriorityList.length === 0) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'pricing_missing', message: 'No priced video models are available for this mode.' })))
@@ -150,7 +160,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           return
         }
         const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) =>
-          calculateVideoCostOrNull(candidateId, clampDurationForModel(candidateId, rawDuration)) ?? 0,
+          priceByModelId.get(candidateId) ?? 0,
         ))
         const reservation = await reserveProviderBudget({
           userId: auth.userId,
@@ -356,7 +366,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────
-        const costDollars = calculateVideoCostOrNull(usedModelId, usedDuration)
+        const costDollars = priceByModelId.get(usedModelId) ?? null
         if (costDollars == null) {
           await markProviderBudgetReconcile({
             userId: auth.userId,

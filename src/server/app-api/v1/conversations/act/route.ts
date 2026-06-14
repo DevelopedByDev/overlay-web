@@ -171,7 +171,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
-
     const {
       appSettings,
       paid,

@@ -10,11 +10,17 @@ test('maps app-facing chat model ids to canonical Vercel AI Gateway ids', () => 
   assert.equal(getGatewayModelId('claude-haiku-4-5'), 'anthropic/claude-haiku-4.5')
   assert.equal(getGatewayModelId('gemini-3-flash-preview'), 'google/gemini-3-flash')
   assert.equal(getGatewayModelId('gpt-4.1-2025-04-14'), 'openai/gpt-4.1')
+  assert.equal(getGatewayModelId('qwen/qwen3.6-plus'), 'alibaba/qwen3.6-plus')
+  assert.equal(getGatewayModelId('z-ai/glm-5.1'), 'zai/glm-5.1')
 })
 
 test('keeps already canonical gateway ids unchanged', () => {
   assert.equal(getGatewayModelId('anthropic/claude-opus-4.7'), 'anthropic/claude-opus-4.7')
   assert.equal(getGatewayModelId('moonshotai/kimi-k2.6'), 'moonshotai/kimi-k2.6')
+})
+
+test('accepts canonical ids selected from the live Gateway catalog', () => {
+  assert.equal(getGatewayModelId('cohere/command-a'), 'cohere/command-a')
 })
 
 test('maps legacy model ids through the current catalog before routing', () => {

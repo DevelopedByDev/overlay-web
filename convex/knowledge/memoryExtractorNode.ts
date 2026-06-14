@@ -6,7 +6,7 @@ import { api, internal } from "../_generated/api";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { calculateTokenCostOrNull } from '../../src/shared/ai/gateway/model-pricing'
+import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
 
 const GATEWAY_CHAT_URL =
@@ -170,7 +170,7 @@ export const extractFromTurn = internalAction({
       const serverSecret = process.env.INTERNAL_API_SECRET;
       const maxOutputTokens = 1200;
       const estimatedInputTokens = Math.ceil((SYSTEM_PROMPT.length + prompt.length) / 4);
-      const estimatedCostUsd = calculateTokenCostOrNull(modelId, estimatedInputTokens, 0, maxOutputTokens);
+      const estimatedCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, estimatedInputTokens, 0, maxOutputTokens);
       if (estimatedCostUsd === null) {
         return {
           extracted: 0,
@@ -298,7 +298,7 @@ export const extractFromTurn = internalAction({
         const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage;
         const inputTokens = usage?.inputTokens ?? estimatedInputTokens;
         const outputTokens = usage?.outputTokens ?? maxOutputTokens;
-        const actualCostUsd = calculateTokenCostOrNull(modelId, inputTokens, 0, outputTokens);
+        const actualCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens);
         if (actualCostUsd === null) {
           await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
             serverSecret,

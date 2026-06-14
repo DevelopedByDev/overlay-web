@@ -2,11 +2,12 @@ import 'server-only'
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import {
-  AVAILABLE_MODELS,
   getModel,
+  registerGatewayCatalogModels,
 } from '@/shared/ai/gateway/model-data'
-import { estimateTokenCost } from '@/shared/ai/gateway/model-pricing'
+import { calculateGatewayLanguageTokenCostOrNull } from '@/shared/ai/gateway/model-pricing'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
+import { getGatewayCatalogModel, getGatewayLanguageCatalog } from './gateway-catalog'
 import {
   getGatewayModelId,
   getOrCreateGateway,
@@ -132,21 +133,14 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
   return openrouter.chat(toOpenRouterApiModelId(modelId))
 }
 
-export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {
+export async function getGatewayLanguageModel(
+  modelId: string,
+  accessToken?: string,
+) {
   const model = getModel(modelId)
 
   // Route OpenRouter models to OpenRouter API
   if (model?.provider === 'openrouter') {
-    return getOpenRouterLanguageModel(modelId, accessToken)
-  }
-
-  // Alibaba Qwen ids match OpenRouter (e.g. qwen/qwen3.6-plus); AI Gateway often has no route for them.
-  if (model?.provider === 'alibaba') {
-    return getOpenRouterLanguageModel(modelId, accessToken)
-  }
-
-  // Z.ai GLM ids (e.g. z-ai/glm-5.1) are on OpenRouter; Vercel AI Gateway may 404 model_not_found.
-  if (model?.provider === 'zai') {
     return getOpenRouterLanguageModel(modelId, accessToken)
   }
 
@@ -203,31 +197,35 @@ export class OpenRouterGateway implements LLMGateway {
 
   async listModels(): Promise<ModelInfo[]> {
     const allowlist = new Set(this.config.modelAllowlist ?? [])
-    return AVAILABLE_MODELS
+    const catalog = await getGatewayLanguageCatalog()
+    registerGatewayCatalogModels(catalog)
+    return catalog
       .filter((model) => allowlist.size === 0 || allowlist.has(model.id))
       .map((model) => ({
       id: model.id,
       name: model.name,
       provider: model.provider,
       description: model.description,
-      supportsVision: model.supportsVision,
-      supportsReasoning: model.supportsReasoning,
-      supportsSearch: model.supportsSearch,
-      supportsZeroDataRetention: model.supportsZeroDataRetention,
-      pricePer1mTokens: model.pricePer1mTokens,
+      supportsVision: model.tags.includes('vision'),
+      supportsReasoning: model.tags.includes('reasoning'),
+      supportsSearch: model.tags.includes('web-search'),
+      pricePer1mTokens:
+        ((model.inputPricePerMillion ?? 0) + (model.outputPricePerMillion ?? 0)) / 2,
     }))
   }
 
   async getModelPricing(modelId: string): Promise<PricingInfo> {
-    const model = getModel(modelId)
-    const estimate = estimateTokenCost(modelId, 1_000_000, 0, 0)
+    const model = await getGatewayCatalogModel(modelId)
+    const providerCostUsd = model?.type === 'language'
+      ? calculateGatewayLanguageTokenCostOrNull(model.pricing, 1_000_000, 0, 0) ?? undefined
+      : undefined
     return {
       modelId,
-      providerCostUsd: model?.pricePer1mTokens ?? estimate?.providerCostUsd,
-      pricingModelId: estimate?.pricingModelId ?? modelId,
-      pricingSource: estimate?.pricingSource ?? (model?.cost === 0 ? 'explicit-free' : undefined),
-      pricingType: estimate?.pricingType ?? 'language',
-      isFree: model?.cost === 0,
+      providerCostUsd,
+      pricingModelId: model?.gatewayId ?? modelId,
+      pricingSource: model ? 'gateway-api' : undefined,
+      pricingType: 'language',
+      isFree: providerCostUsd === 0,
     }
   }
 }

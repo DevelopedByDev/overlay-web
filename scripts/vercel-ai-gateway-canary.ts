@@ -1,7 +1,7 @@
 import { createGateway, generateText, tool } from 'ai'
 import { z } from 'zod'
 import { getGatewayModelId } from '../src/server/ai/gateway/gateway-runtime'
-import { estimateTokenCost } from '../src/shared/ai/gateway/model-pricing'
+import { calculateGatewayLanguageTokenCostOrNull } from '../src/shared/ai/gateway/model-pricing'
 
 const HARD_MAX_COST_USD = 0.10
 const DEFAULT_MAX_COST_USD = 0.01
@@ -36,13 +36,28 @@ async function main() {
   const gatewayModelId = getGatewayModelId(appModelId)
   const inputTokenBudget = Math.ceil(readNumberEnv('AI_GATEWAY_CANARY_INPUT_TOKEN_BUDGET', DEFAULT_INPUT_TOKEN_BUDGET))
   const outputTokenBudget = Math.ceil(readNumberEnv('AI_GATEWAY_CANARY_OUTPUT_TOKEN_BUDGET', DEFAULT_OUTPUT_TOKEN_BUDGET))
-  const estimate = estimateTokenCost(gatewayModelId, inputTokenBudget, 0, outputTokenBudget)
-  if (!estimate) {
+  const catalogResponse = await fetch('https://ai-gateway.vercel.sh/v1/models')
+  if (!catalogResponse.ok) {
+    throw new Error(`Could not load Gateway pricing (${catalogResponse.status}); refusing paid request`)
+  }
+  const catalog = await catalogResponse.json() as {
+    data?: Array<{ id?: string; type?: string; pricing?: Record<string, unknown> }>
+  }
+  const catalogModel = catalog.data?.find((model) => model.id === gatewayModelId)
+  const estimatedCostUsd = catalogModel?.type === 'language' && catalogModel.pricing
+    ? calculateGatewayLanguageTokenCostOrNull(
+        catalogModel.pricing,
+        inputTokenBudget,
+        0,
+        outputTokenBudget,
+      )
+    : null
+  if (estimatedCostUsd === null) {
     throw new Error(`Missing Gateway pricing for canary model ${gatewayModelId}; refusing paid request`)
   }
-  if (estimate.providerCostUsd > requestedCapUsd) {
+  if (estimatedCostUsd > requestedCapUsd) {
     throw new Error(
-      `Estimated canary cost $${estimate.providerCostUsd.toFixed(6)} exceeds cap $${requestedCapUsd.toFixed(6)}`,
+      `Estimated canary cost $${estimatedCostUsd.toFixed(6)} exceeds cap $${requestedCapUsd.toFixed(6)}`,
     )
   }
 
@@ -64,9 +79,9 @@ async function main() {
     gatewayModelId,
     inputTokenBudget,
     outputTokenBudget,
-    estimatedCostUsd: Number(estimate.providerCostUsd.toFixed(8)),
+    estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
     maxCostUsd: requestedCapUsd,
-    pricingModelId: estimate.pricingModelId,
+    pricingModelId: gatewayModelId,
   })
 
   const result = await generateText({

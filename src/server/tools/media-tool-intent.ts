@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { generateObject } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateTokenCostOrNull } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -66,7 +66,7 @@ export async function classifyMediaToolIntentForTurn(params: {
   ].join('\n')
 
   const estimatedInputTokens = Math.ceil(prompt.length / 4) + 80
-  const estimatedProviderCostUsd = calculateTokenCostOrNull(
+  const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
     MEDIA_INTENT_MODEL,
     estimatedInputTokens,
     0,
@@ -98,7 +98,7 @@ export async function classifyMediaToolIntentForTurn(params: {
     const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
     const inputTokens = usage?.inputTokens ?? estimatedInputTokens
     const outputTokens = usage?.outputTokens ?? MEDIA_INTENT_OUTPUT_TOKENS
-    const actualProviderCostUsd = calculateTokenCostOrNull(MEDIA_INTENT_MODEL, inputTokens, 0, outputTokens)
+    const actualProviderCostUsd = await calculateLanguageModelTokenCostOrNull(MEDIA_INTENT_MODEL, inputTokens, 0, outputTokens)
     if (actualProviderCostUsd === null) {
       await markProviderBudgetReconcile({
         userId: params.userId,

@@ -1,7 +1,8 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { calculateTokenCostOrNull, isPremiumModel } from '@/server/ai/pricing'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { isPremiumModel } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -36,7 +37,7 @@ export class ActUsageBudgetService {
     userId: string
   }): Promise<ActBudgetReservationResult> {
     if (!args.paid || !isPremiumModel(args.modelId)) return { ok: true, reservationId: null }
-    const estimatedProviderCostUsd = calculateTokenCostOrNull(
+    const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
       args.modelId,
       args.estimatedInputTokens,
       0,
@@ -81,7 +82,12 @@ export class ActUsageBudgetService {
     reservationId: string | null
     userId: string
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
-    const providerCostUsd = calculateTokenCostOrNull(args.modelId, args.inputTokens, 0, args.outputTokens)
+    const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
+      args.modelId,
+      args.inputTokens,
+      0,
+      args.outputTokens,
+    )
     if (providerCostUsd === null) {
       logger.error('[conversations/act] Missing pricing for completed provider call', { modelId: args.modelId })
       if (args.reservationId) {

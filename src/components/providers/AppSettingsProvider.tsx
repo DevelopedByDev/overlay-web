@@ -30,6 +30,7 @@ const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
+const MAX_ENABLED_MODEL_IDS = 400
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
 const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
 
@@ -118,6 +119,14 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   ) {
     return false
   }
+  if (
+    candidate.enabledChatModelIds !== undefined &&
+    (!Array.isArray(candidate.enabledChatModelIds) ||
+      candidate.enabledChatModelIds.length > MAX_ENABLED_MODEL_IDS ||
+      !candidate.enabledChatModelIds.every(isSafeModelId))
+  ) {
+    return false
+  }
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
@@ -136,7 +145,8 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.attachFilesToKnowledgeByDefault === 'boolean' ||
     typeof candidate.onlyAllowZdrModels === 'boolean' ||
     typeof candidate.dismissedZdrWarningGlobally === 'boolean' ||
-    Array.isArray(candidate.dismissedZdrWarningModelIds)
+    Array.isArray(candidate.dismissedZdrWarningModelIds) ||
+    Array.isArray(candidate.enabledChatModelIds)
   )
 }
 

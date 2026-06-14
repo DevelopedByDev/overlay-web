@@ -35,9 +35,8 @@ export function pricingFromCatalog(
   const model = getModelForId(modelId, models)
   return {
     modelId,
-    providerCostUsd: model?.pricePer1mTokens,
     pricingModelId: model?.id ?? modelId,
-    pricingSource: model ? 'catalog' : undefined,
+    pricingSource: model ? 'runtime-catalog-required' : undefined,
     pricingType: 'language',
     isFree: model?.cost === 0,
   }

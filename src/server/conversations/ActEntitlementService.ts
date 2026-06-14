@@ -87,7 +87,8 @@ export class ActEntitlementService {
           403,
         )
       }
-    } else if (appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
+    }
+    if (paid && appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
       serviceError(
         {
           error: 'zdr_model_required',

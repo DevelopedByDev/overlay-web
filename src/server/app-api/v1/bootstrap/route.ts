@@ -22,7 +22,9 @@ import {
   AVAILABLE_MODELS,
   IMAGE_MODELS,
   VIDEO_MODELS,
+  registerGatewayCatalogModels,
 } from '@/shared/ai/gateway/model-data'
+import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import {
   formatOverlayConfigError,
   getOverlayRuntimeConfig,
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession()
 
-    const [profile, entitlements, uiSettings] = await Promise.all([
+    const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       auth.accessToken
         ? convex.query<{
             profile?: {
@@ -79,7 +81,9 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         },
         { throwOnError: true },
       ).catch((_error) => DEFAULT_APP_SETTINGS),
+      getGatewayLanguageCatalog().catch(() => []),
     ])
+    registerGatewayCatalogModels(gatewayModels)
 
     const user =
       browserSession?.user ??

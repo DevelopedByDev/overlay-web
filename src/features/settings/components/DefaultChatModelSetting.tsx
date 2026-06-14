@@ -2,7 +2,8 @@
 
 import { Bot } from 'lucide-react'
 import { SettingsActionRow } from '@overlay/modules-react/settings'
-import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { getEnabledChatModels } from '@/shared/ai/gateway/model-data'
+import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
 
 export function DefaultChatModelSetting({
@@ -10,6 +11,7 @@ export function DefaultChatModelSetting({
   defaultAskModelIds,
   isFreeTier,
   onlyAllowZdrModels,
+  enabledModelIds,
   disabled,
   onSelect,
 }: {
@@ -17,11 +19,13 @@ export function DefaultChatModelSetting({
   defaultAskModelIds?: readonly string[]
   isFreeTier: boolean
   onlyAllowZdrModels: boolean
+  enabledModelIds: readonly string[]
   disabled?: boolean
   onSelect: (actModelId: string, askModelIds: string[]) => void
 }) {
+  useGatewayModelCatalog()
   const effectiveOnlyAllowZdr = onlyAllowZdrModels && !isFreeTier
-  const models = getModelsByIntelligence(isFreeTier)
+  const models = getEnabledChatModels(enabledModelIds, isFreeTier)
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
 

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
+import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -175,6 +176,7 @@ export default function SettingsPage() {
                 defaultAskModelIds={settings.defaultAskModelIds}
                 isFreeTier={billingSettings?.planKind === 'free'}
                 onlyAllowZdrModels={settings.onlyAllowZdrModels}
+                enabledModelIds={settings.enabledChatModelIds}
                 disabled={busy || (capabilities.billing && !billingSettings)}
                 onSelect={(actModelId, askModelIds) => {
                   void updateSettings({
@@ -314,20 +316,11 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'models' && (
-            <>
-              <SettingsCard title="Models">
-                <p>
-                  Set your default model in General settings. Each existing chat keeps the model it last used; new chats
-                  start with your default. Use the model menu in chat to switch models or compare answers in Ask mode.
-                </p>
-                <Link
-                  href="/app/chat"
-                  className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
-                >
-                  Go to chat →
-                </Link>
-              </SettingsCard>
-            </>
+            <ModelCatalogSetting
+              enabledModelIds={settings.enabledChatModelIds}
+              disabled={busy}
+              onChange={(enabledChatModelIds) => void updateSettings({ enabledChatModelIds })}
+            />
           )}
 
           {!isLoading && section === 'contact' && (
