@@ -30,8 +30,12 @@ import {
 } from '@overlay/modules-react/settings'
 import { getExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
+import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 
-const MemoriesView = dynamic(() => import('@/features/knowledge/components/MemoriesView'))
+const MemoriesView = dynamic(
+  () => import('@/features/knowledge/components/MemoriesView'),
+  { loading: () => <MemoriesLoadingState /> },
+)
 
 interface MemoriesHeaderState {
   count: number

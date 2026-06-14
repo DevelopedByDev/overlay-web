@@ -79,6 +79,28 @@ function TemporaryChatButton({
   )
 }
 
+function PremiumModelsLoadingRows({ divider = false }: { divider?: boolean }) {
+  return (
+    <div
+      className={divider ? 'mt-1 border-t border-[var(--border)]' : ''}
+      role="status"
+      aria-label="Loading premium models"
+    >
+      <div className="px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+        Premium
+      </div>
+      <div className="space-y-1 px-3 pb-2 pt-1" aria-hidden>
+        {[72, 58, 66].map((width) => (
+          <div key={width} className="flex h-7 items-center gap-2">
+            <span className="ui-skeleton-line h-2.5 w-[10px] rounded" />
+            <span className="ui-skeleton-line h-3 rounded" style={{ width: `${width}%` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export interface ChatExperienceHeaderProps {
   hideHeader?: boolean
   activeChatId: string | null
@@ -137,6 +159,7 @@ export interface ChatExperienceHeaderProps {
   onToggleVideoModel: (modelId: string) => void
   onVideoModelSelectionModeChange: (mode: AskModelSelectionMode) => void
   selectableTextModels: ChatModel[]
+  textModelsLoading: boolean
   askModelSelectionMode: AskModelSelectionMode
   selectedActModel: string
   selectedModels: string[]
@@ -203,6 +226,7 @@ export function ChatExperienceHeader({
   onToggleVideoModel,
   onVideoModelSelectionModeChange,
   selectableTextModels,
+  textModelsLoading,
   askModelSelectionMode,
   selectedActModel,
   selectedModels,
@@ -302,13 +326,17 @@ export function ChatExperienceHeader({
                   onMouseLeave={() => onHoveredModelChange(null, null)}
                 >
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+                    {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
                     {automationHeaderModels.map((m, index, models) => {
                       const isSel = m.id === automationHeaderModelId
                       const isFreeModelRow = isFreeTierChatModelId(m.id)
                       const previous = models[index - 1]
                       const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
                       const showFreeTierGroupDivider = isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                      const showFreeGroupDivider = !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
+                      const showFreeGroupDivider =
+                        !isFreeTier &&
+                        isFreeModelRow &&
+                        (!previousIsFreeModelRow || (textModelsLoading && index === 0))
                       const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
                       const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
                       return (
@@ -342,6 +370,7 @@ export function ChatExperienceHeader({
                         </div>
                       )
                     })}
+                    {textModelsLoading && isFreeTier ? <PremiumModelsLoadingRows divider /> : null}
                   </div>
                 </div>
               </>
@@ -442,6 +471,9 @@ export function ChatExperienceHeader({
                   onMouseLeave={() => onHoveredModelChange(null, null)}
                 >
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+                    {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
+                      <PremiumModelsLoadingRows />
+                    ) : null}
                     {generationMode === 'image'
                       ? imageModels.map((m) => {
                           const isSel = selectedImageModels.includes(m.id)
@@ -499,7 +531,9 @@ export function ChatExperienceHeader({
                             const showFreeTierGroupDivider =
                               isFreeTier && !isFreeModelRow && previousIsFreeModelRow
                             const showFreeGroupDivider =
-                              !isFreeTier && isFreeModelRow && !previousIsFreeModelRow
+                              !isFreeTier &&
+                              isFreeModelRow &&
+                              (!previousIsFreeModelRow || (textModelsLoading && index === 0))
                             const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
                             const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
                             return (
@@ -531,6 +565,9 @@ export function ChatExperienceHeader({
                               </div>
                             )
                           })}
+                    {generationMode === 'text' && textModelsLoading && isFreeTier ? (
+                      <PremiumModelsLoadingRows divider />
+                    ) : null}
                   </div>
                   {generationMode === 'image' ? (
                     <div className="border-t border-[var(--border)] px-2 py-2">

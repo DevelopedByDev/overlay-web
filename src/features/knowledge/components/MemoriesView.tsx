@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { MemoriesLoadingState } from './MemoriesLoadingState'
 
 interface MemoryListItem {
   key: string
@@ -348,9 +349,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
-            Loading...
-          </div>
+          <MemoriesLoadingState />
         ) : memories.length === 0 && !pendingSavePreview ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
             <Brain size={40} strokeWidth={1} className="opacity-40" />

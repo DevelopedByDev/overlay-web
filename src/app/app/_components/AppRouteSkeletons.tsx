@@ -195,7 +195,26 @@ export function KnowledgeLoadingRouteSkeleton() {
 }
 
 export function MemoriesLoadingRouteSkeleton() {
-  return <KnowledgeRouteSkeleton />
+  return (
+    <div className="flex h-full flex-col bg-[var(--background)]">
+      <PageHeaderSkeleton actions={2} />
+      <div className="mx-auto w-full max-w-3xl space-y-5 px-6 py-5">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={index}
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4"
+          >
+            <SkeletonBlock className="h-3 w-full" />
+            <SkeletonBlock className="mt-2 h-3 w-4/5" />
+            <div className="mt-3 flex gap-2">
+              <SkeletonBlock className="h-5 w-16 rounded-full" />
+              <SkeletonBlock className="h-5 w-20 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export function NotesLoadingRouteSkeleton() {
@@ -225,21 +244,16 @@ export function ProjectsRouteSkeleton() {
 
 export function SettingsRouteSkeleton() {
   return (
-    <div className="flex h-full bg-[var(--background)]">
-      <div className="hidden h-full w-56 shrink-0 border-r border-[var(--border)] bg-[var(--surface-muted)] p-3 md:block">
-        <SidebarRows rows={6} />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeaderSkeleton actions={0} />
-        <div className="mx-auto w-full max-w-3xl space-y-3 p-5">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-              <SkeletonBlock className="mb-3 h-4 w-44" />
-              <SkeletonBlock className="mb-2 h-3 w-full" />
-              <SkeletonBlock className="h-3 w-3/5" />
-            </div>
-          ))}
-        </div>
+    <div className="flex h-full min-w-0 flex-col bg-[var(--background)]">
+      <PageHeaderSkeleton actions={0} />
+      <div className="mx-auto w-full max-w-3xl space-y-3 p-5">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+            <SkeletonBlock className="mb-3 h-4 w-44" />
+            <SkeletonBlock className="mb-2 h-3 w-full" />
+            <SkeletonBlock className="h-3 w-3/5" />
+          </div>
+        ))}
       </div>
     </div>
   )

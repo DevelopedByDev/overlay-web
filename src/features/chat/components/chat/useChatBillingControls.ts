@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
@@ -86,13 +86,11 @@ export function useChatBillingControls({
   const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
   const isModelAccessRestricted = isFreeTier
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
-  const selectableTextModels = useMemo(() => {
-    const models = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
-      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-    return effectiveOnlyAllowZdrModels
-      ? models.filter((model) => model.supportsZeroDataRetention)
-      : models
-  }, [effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted])
+  const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
+    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+  const selectableTextModels = effectiveOnlyAllowZdrModels
+    ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
+    : enabledTextModels
   const premiumModelBlocked =
     isModelAccessRestricted && !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked

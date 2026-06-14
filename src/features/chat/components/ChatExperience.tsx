@@ -193,6 +193,22 @@ type PendingFirstSendState = {
   activeChatTitleSnapshot: string | null
 }
 
+function readableModelId(modelId: string): string {
+  const slug = modelId.split('/').pop() ?? modelId
+  const abbreviations: Record<string, string> = {
+    api: 'API',
+    glm: 'GLM',
+    gpt: 'GPT',
+    oss: 'OSS',
+    vl: 'VL',
+  }
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => abbreviations[part.toLowerCase()] ?? `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function ChatExperience({
@@ -229,7 +245,10 @@ export default function ChatExperience({
       ? rawEmbedProjectId
       : null
   const { settings, updateSettings } = useAppSettings()
-  useGatewayModelCatalog()
+  const {
+    models: gatewayCatalogModels,
+    isLoading: gatewayModelsLoading,
+  } = useGatewayModelCatalog()
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -3395,13 +3414,22 @@ export default function ChatExperience({
   // ── derived values for header ─────────────────────────────────────────────
 
   const activeChat = chats.find((c) => c._id === activeChatId)
+  const selectedGatewayModelName = gatewayCatalogModels.find(
+    (model) => model.id === selectedActModel || model.gatewayId === selectedActModel,
+  )?.name
+  const registeredModelName = getChatModelDisplayName(selectedActModel)
+  const selectedTextModelName =
+    selectedGatewayModelName ||
+    (registeredModelName !== selectedActModel ? registeredModelName : readableModelId(selectedActModel))
   const modelPickerLabel = generationMode === 'image'
     ? (selectedImageModels.length === 1 ? (IMAGE_MODELS.find((m) => m.id === selectedImageModels[0])?.name ?? 'Select model') : `${selectedImageModels.length} models`)
     : generationMode === 'video'
     ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
     : (askModelSelectionMode === 'multiple' && selectedModels.length > 1
       ? `${selectedModels.length} models`
-      : (getChatModelDisplayName(selectedActModel) || 'Select model'))
+      : gatewayModelsLoading
+        ? 'Loading models…'
+        : (selectedTextModelName || 'Select model'))
 
   // Read messages directly from the runtime Chat instance so the UI never lags
   // behind the loaded state (useChat's useSyncExternalStore can be one beat late).
@@ -3702,6 +3730,7 @@ export default function ChatExperience({
           onToggleVideoModel={toggleVideoModelInPicker}
           onVideoModelSelectionModeChange={handleVideoModelSelectionModeChange}
           selectableTextModels={selectableTextModels}
+          textModelsLoading={gatewayModelsLoading}
           askModelSelectionMode={askModelSelectionMode}
           selectedActModel={selectedActModel}
           selectedModels={selectedModels}
