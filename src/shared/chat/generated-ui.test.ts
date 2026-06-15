@@ -3,9 +3,13 @@ import assert from 'node:assert/strict'
 import {
   GENERATED_UI_DATA_TYPE,
   buildGeneratedUiPart,
+  buildStreamingGeneratedUiPart,
+  generatedUiDraftContainsCode,
   generatedUiDataToPlainText,
+  looksLikeCodeContent,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import { collectWebSourcesFromBlocks } from '@overlay/chat-core/sources'
 import {
   buildAssistantPersistenceFromSteps,
@@ -30,6 +34,87 @@ test('normalizeGeneratedUiData validates and trims text draft payloads', () => {
     format: 'markdown',
   })
   assert.equal(normalizeGeneratedUiData({ version: 1, kind: 'draft.text', body: ' ' }), null)
+})
+
+test('streaming generated UI accepts partial prose drafts and rejects code payloads', () => {
+  assert.deepEqual(
+    buildStreamingGeneratedUiPart('tool-1', {
+      kind: 'draft.email',
+      subject: 'Project up',
+      body: 'Hi team,\n\nHere is the current',
+    }),
+    {
+      type: 'data',
+      id: 'tool-1',
+      dataType: GENERATED_UI_DATA_TYPE,
+      data: {
+        version: 1,
+        kind: 'draft.email',
+        subject: 'Project up',
+        body: 'Hi team,\n\nHere is the current',
+      },
+      transient: true,
+    },
+  )
+
+  const html = '<!DOCTYPE html>\n<html><body>Hello</body></html>'
+  assert.equal(looksLikeCodeContent(html), true)
+  assert.equal(generatedUiDraftContainsCode({ kind: 'draft.text', body: html }), true)
+  assert.equal(buildStreamingGeneratedUiPart('tool-2', { kind: 'draft.text', body: html }), null)
+  assert.equal(buildStreamingGeneratedUiPart('tool-3', {
+    kind: 'draft.email',
+    subject: 'Options',
+    body: 'Choose an option.',
+    variants: [{ label: 'HTML', body: html }],
+  }), null)
+})
+
+test('assistant visual sequence renders partial generated UI input with a stable tool-call id', () => {
+  const streaming = buildAssistantVisualSequence([
+    {
+      type: 'tool-present_generated_ui',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+      input: {
+        kind: 'draft.text',
+        title: 'Launch note',
+        body: 'The first streamed sentence',
+      },
+    },
+  ])
+  assert.equal(streaming[0]?.kind, 'generated-ui')
+  if (streaming[0]?.kind !== 'generated-ui') assert.fail('Expected generated UI block')
+  assert.equal(streaming[0].part.id, 'call-1')
+  assert.equal(streaming[0].part.transient, true)
+  assert.equal(streaming[0].part.data.kind, 'draft.text')
+  assert.equal(streaming[0].part.data.body, 'The first streamed sentence')
+
+  const completed = buildAssistantVisualSequence([
+    {
+      type: 'tool-present_generated_ui',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: {
+        kind: 'draft.text',
+        title: 'Launch note',
+        body: 'The complete note.',
+      },
+      output: {
+        success: true,
+        id: 'server-generated-id',
+        generatedUi: {
+          version: 1,
+          kind: 'draft.text',
+          title: 'Launch note',
+          body: 'The complete note.',
+        },
+      },
+    },
+  ])
+  assert.equal(completed[0]?.kind, 'generated-ui')
+  if (completed[0]?.kind !== 'generated-ui') assert.fail('Expected generated UI block')
+  assert.equal(completed[0].part.id, 'call-1')
+  assert.equal(completed[0].part.transient, undefined)
 })
 
 test('generated UI email data is summarized as model-readable text', () => {

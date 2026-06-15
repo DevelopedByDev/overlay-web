@@ -7,6 +7,7 @@ import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import {
   GENERATED_UI_VERSION,
+  generatedUiDraftContainsCode,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
 
@@ -58,6 +59,12 @@ export async function executePresentGeneratedUi(
   _options: OverlayToolsOptions,
   input: Record<string, unknown>,
 ) {
+  if (generatedUiDraftContainsCode(input)) {
+    return {
+      success: false,
+      error: 'Code must be returned in a fenced Markdown code block, not a generated UI draft.',
+    }
+  }
   const id = typeof input.id === 'string' && input.id.trim()
     ? input.id.trim()
     : undefined

@@ -121,11 +121,6 @@ export function ChatComposer(props: ChatComposerProps) {
             viewProps.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
           }`}
         >
-          {!viewProps.showCenteredEmptyChat && viewProps.scrollToBottomControl ? (
-            <div className="mb-2 flex justify-center">
-              {viewProps.scrollToBottomControl}
-            </div>
-          ) : null}
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (

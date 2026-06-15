@@ -67,7 +67,7 @@ export function buildActAgentInstructions(params: {
 }
 
 function generatedUiNote(): string {
-  return '\n\nGenerated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable text (essay, memo, statement, proposal) or an email. Use kind "draft.text" for general drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Do not duplicate the full generated draft in normal prose after calling the tool, and do not use emoji or pointing-hand callouts around connector cards.'
+  return '\n\nGenerated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable prose (essay, memo, statement, proposal) or an email. Use kind "draft.text" for general prose drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Generated UI is prose-only: never place source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or any other machine-readable code in present_generated_ui. Every code artifact you write must be returned in a fenced Markdown code block with an appropriate language tag. Inline code is only for short identifiers or commands, never a complete code artifact. Do not duplicate the full generated draft in normal prose after calling the tool, and do not use emoji or pointing-hand callouts around connector cards.'
 }
 
 function buildActInstructionNotes(params: Parameters<typeof buildActAgentInstructions>[0]) {

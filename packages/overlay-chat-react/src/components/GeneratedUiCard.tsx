@@ -118,19 +118,25 @@ function AutoTextarea({
   onChange,
   onBlur,
   minRows = 6,
+  maxRows = 18,
 }: {
   value: string
   onChange: (value: string) => void
   onBlur?: () => void
   minRows?: number
+  maxRows?: number
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.max(el.scrollHeight, minRows * 24)}px`
-  }, [value, minRows])
+    const minHeight = minRows * 24
+    const maxHeight = Math.max(minHeight, maxRows * 24)
+    const nextHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)
+    el.style.height = `${nextHeight}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [value, minRows, maxRows])
 
   return (
     <textarea
@@ -139,8 +145,47 @@ function AutoTextarea({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       rows={minRows}
-      className="w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+      className="w-full resize-none overscroll-contain border-0 bg-transparent p-0 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
     />
+  )
+}
+
+function ScrollableDraftBody({
+  value,
+  expanded,
+  streaming,
+  className,
+}: {
+  value: string
+  expanded: boolean
+  streaming: boolean
+  className: string
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const followTailRef = useRef(true)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !streaming || !followTailRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [streaming, value])
+
+  return (
+    <div
+      ref={ref}
+      onScroll={() => {
+        const el = ref.current
+        if (!el) return
+        followTailRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32
+      }}
+      className={classNames(
+        'overscroll-contain whitespace-pre-wrap text-sm leading-7 text-[var(--foreground)]',
+        expanded ? 'max-h-[70vh] overflow-y-auto' : 'max-h-[28rem] overflow-y-auto',
+        className,
+      )}
+    >
+      {value}
+    </div>
   )
 }
 
@@ -215,15 +260,25 @@ export function GeneratedUiCard({
   const timerRef = useRef<number | null>(null)
   const latestDataRef = useRef(data)
   const partIdRef = useRef(part.id)
+  const incomingDataRef = useRef(part.data)
+  const streaming = part.transient === true
 
   useEffect(() => {
-    if (partIdRef.current === part.id) return
-    partIdRef.current = part.id
+    if (partIdRef.current !== part.id) {
+      partIdRef.current = part.id
+      incomingDataRef.current = part.data
+      setData(part.data)
+      latestDataRef.current = part.data
+      setEditing(false)
+      setExpanded(false)
+      return
+    }
+    if (incomingDataRef.current === part.data) return
+    incomingDataRef.current = part.data
+    if (editing) return
     setData(part.data)
     latestDataRef.current = part.data
-    setEditing(false)
-    setExpanded(false)
-  }, [part.id, part.data])
+  }, [editing, part.id, part.data])
 
   useEffect(() => () => {
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
@@ -254,7 +309,7 @@ export function GeneratedUiCard({
   }
 
   const plainText = useMemo(() => generatedUiDataToPlainText(data), [data])
-  const canEdit = !readOnly && (data.kind === 'draft.text' || data.kind === 'draft.email')
+  const canEdit = !readOnly && !streaming && (data.kind === 'draft.text' || data.kind === 'draft.email')
 
   async function handleCopy() {
     if (!plainText) return
@@ -265,12 +320,13 @@ export function GeneratedUiCard({
   }
 
   return (
-    <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1">
+    <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1" aria-busy={streaming}>
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-sm">
         <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
           <GeneratedUiHeader
             data={data}
             connectorActions={connectorActions}
+            streaming={streaming}
           />
           <div className="flex shrink-0 items-center gap-1">
             {canEdit ? (
@@ -297,12 +353,13 @@ export function GeneratedUiCard({
             </ToolbarButton>
           </div>
         </div>
-        <div className={classNames('bg-[var(--surface-elevated)]', expanded ? 'max-h-none' : 'max-h-[32rem] overflow-hidden')}>
+        <div className="bg-[var(--surface-elevated)]">
           {data.kind === 'draft.text' ? (
             <TextDraftCardBody
               data={data}
               editing={editing}
               expanded={expanded}
+              streaming={streaming}
               onBlur={() => flush()}
               onChange={update}
             />
@@ -310,8 +367,10 @@ export function GeneratedUiCard({
             <EmailDraftCardBody
               data={data}
               editing={editing}
+              expanded={expanded}
               connectorActions={connectorActions}
               readOnly={readOnly}
+              streaming={streaming}
               onBlur={() => flush()}
               onChange={update}
             />
@@ -331,9 +390,11 @@ export function GeneratedUiCard({
 function GeneratedUiHeader({
   data,
   connectorActions,
+  streaming,
 }: {
   data: GeneratedUiData
   connectorActions?: GeneratedUiConnectorActions
+  streaming: boolean
 }) {
   if (data.kind === 'connector.connect') {
     const logoUrl = connectorActions?.getLogoUrl?.(data.serviceName, data.slug)
@@ -358,7 +419,7 @@ function GeneratedUiHeader({
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-[var(--foreground)]">{data.subject || 'Email draft'}</p>
-          <p className="truncate text-xs text-[var(--muted)]">Email draft</p>
+          <p className="truncate text-xs text-[var(--muted)]">{streaming ? 'Drafting...' : 'Email draft'}</p>
         </div>
       </div>
     )
@@ -366,7 +427,7 @@ function GeneratedUiHeader({
   return (
     <div className="min-w-0">
       <p className="truncate text-sm font-medium text-[var(--foreground)]">{data.title || 'Text draft'}</p>
-      <p className="truncate text-xs text-[var(--muted)]">Editable draft</p>
+      <p className="truncate text-xs text-[var(--muted)]">{streaming ? 'Drafting...' : 'Editable draft'}</p>
     </div>
   )
 }
@@ -375,12 +436,14 @@ function TextDraftCardBody({
   data,
   editing,
   expanded,
+  streaming,
   onChange,
   onBlur,
 }: {
   data: GeneratedTextDraftData
   editing: boolean
   expanded: boolean
+  streaming: boolean
   onChange: (data: GeneratedUiData) => void
   onBlur: () => void
 }) {
@@ -399,19 +462,18 @@ function TextDraftCardBody({
           onChange={(body) => onChange({ ...data, body })}
           onBlur={onBlur}
           minRows={10}
+          maxRows={expanded ? 28 : 18}
         />
       </div>
     )
   }
   return (
-    <div
-      className={classNames(
-        'whitespace-pre-wrap px-5 py-5 text-sm leading-7 text-[var(--foreground)]',
-        expanded ? '' : 'line-clamp-[18]',
-      )}
-    >
-      {data.body}
-    </div>
+    <ScrollableDraftBody
+      value={data.body}
+      expanded={expanded}
+      streaming={streaming}
+      className="px-5 py-5"
+    />
   )
 }
 
@@ -442,15 +504,19 @@ function EmailField({
 function EmailDraftCardBody({
   data,
   editing,
+  expanded,
   connectorActions,
   readOnly,
+  streaming,
   onChange,
   onBlur,
 }: {
   data: GeneratedEmailDraftData
   editing: boolean
+  expanded: boolean
   connectorActions?: GeneratedUiConnectorActions
   readOnly: boolean
+  streaming: boolean
   onChange: (data: GeneratedUiData, immediate?: boolean) => void
   onBlur: () => void
 }) {
@@ -523,6 +589,7 @@ function EmailDraftCardBody({
               onChange={(body) => onChange({ ...data, body })}
               onBlur={onBlur}
               minRows={10}
+              maxRows={expanded ? 28 : 18}
             />
           </div>
         </div>
@@ -533,7 +600,12 @@ function EmailDraftCardBody({
             {data.cc?.length ? <p><span className="text-[var(--muted)]">Cc:</span> {data.cc.join(', ')}</p> : null}
             <p><span className="text-[var(--muted)]">Subject:</span> {data.subject}</p>
           </div>
-          <div className="whitespace-pre-wrap px-4 py-4 text-sm leading-7 text-[var(--foreground)]">{data.body}</div>
+          <ScrollableDraftBody
+            value={data.body}
+            expanded={expanded}
+            streaming={streaming}
+            className="px-4 py-4"
+          />
         </div>
       )}
       {!readOnly && data.provider === 'gmail' ? (

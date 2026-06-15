@@ -45,6 +45,8 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.match(instructions, /You are in Automate mode\./)
   assert.match(instructions, /interactive_browser_session/)
   assert.match(instructions, /run_daytona_sandbox/)
+  assert.match(instructions, /Every code artifact you write must be returned in a fenced Markdown code block/)
+  assert.match(instructions, /never place source code, HTML, CSS, JavaScript, JSON, SQL/)
   assert.match(instructions, /WEB_KNOWLEDGE/)
   assert.match(instructions, /PAID_REALITY/)
   assert.match(instructions, /MATH_RULES\n\nTABLE_RULES$/)

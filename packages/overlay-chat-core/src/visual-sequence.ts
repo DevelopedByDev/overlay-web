@@ -5,6 +5,7 @@ import {
 } from './agent-assistant-text'
 import {
   buildGeneratedUiPart,
+  buildStreamingGeneratedUiPart,
   isGeneratedUiPart,
 } from './generated-ui'
 import type { AssistantVisualBlock } from './types'
@@ -33,8 +34,18 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
           : null
         if (output?.success === true) {
           const part = buildGeneratedUiPart(
-            (typeof output.id === 'string' && output.id.trim()) || inv.toolCallId || `generated-ui-${out.length}`,
+            inv.toolCallId || (typeof output.id === 'string' && output.id.trim()) || `generated-ui-${out.length}`,
             output.generatedUi,
+          )
+          if (part) {
+            out.push({ kind: 'generated-ui', part })
+            continue
+          }
+        }
+        if (!output && (inv.state === 'input-streaming' || inv.state === 'input-available')) {
+          const part = buildStreamingGeneratedUiPart(
+            inv.toolCallId || `generated-ui-${out.length}`,
+            inv.toolInput,
           )
           if (part) {
             out.push({ kind: 'generated-ui', part })
@@ -67,8 +78,18 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
           : null
         if (output?.success === true) {
           const generatedPart = buildGeneratedUiPart(
-            (typeof output.id === 'string' && output.id.trim()) || part.toolCallId || `generated-ui-${out.length}`,
+            part.toolCallId || (typeof output.id === 'string' && output.id.trim()) || `generated-ui-${out.length}`,
             output.generatedUi,
+          )
+          if (generatedPart) {
+            out.push({ kind: 'generated-ui', part: generatedPart })
+            continue
+          }
+        }
+        if (!output && (part.state === 'input-streaming' || part.state === 'input-available')) {
+          const generatedPart = buildStreamingGeneratedUiPart(
+            part.toolCallId || `generated-ui-${out.length}`,
+            part.input,
           )
           if (generatedPart) {
             out.push({ kind: 'generated-ui', part: generatedPart })

@@ -3774,6 +3774,18 @@ export default function ChatExperience({
           <ChatMessageList
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
+            floatingControl={showScrollToBottomControl ? (
+              <DelayedTooltip label="Jump to latest" side="top">
+                <button
+                  type="button"
+                  aria-label="Jump to latest message"
+                  onClick={() => scrollToConversationBottom('smooth')}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <ChevronDown size={17} strokeWidth={1.9} />
+                </button>
+              </DelayedTooltip>
+            ) : null}
             showLoadingState={showChatLoadingState}
             reserveLatestExchangeStartSpace={reserveLatestExchangeStartSpace}
             state={{
@@ -3843,18 +3855,6 @@ export default function ChatExperience({
               isSendBlocked,
               isActiveLoading,
               isTemporaryChat,
-              scrollToBottomControl: showScrollToBottomControl ? (
-                <DelayedTooltip label="Jump to latest" side="top">
-                  <button
-                    type="button"
-                    aria-label="Jump to latest message"
-                    onClick={() => scrollToConversationBottom('smooth')}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <ChevronDown size={17} strokeWidth={1.9} />
-                  </button>
-                </DelayedTooltip>
-              ) : null,
               blockedComposerContent: isBudgetExhaustedPaid ? (
                 <TopUpPreferenceControl
                   variant="app"

@@ -57,6 +57,7 @@ export type ChatMessageListActions = {
 type ChatMessageListProps = {
   messagesScrollRef: RefObject<HTMLDivElement | null>
   messagesEndRef: RefObject<HTMLDivElement | null>
+  floatingControl?: ReactNode
   showLoadingState: boolean
   reserveLatestExchangeStartSpace?: boolean
   state: ChatMessageListState
@@ -67,6 +68,7 @@ type ChatMessageListProps = {
 export function ChatMessageList({
   messagesScrollRef,
   messagesEndRef,
+  floatingControl,
   showLoadingState,
   reserveLatestExchangeStartSpace = false,
   state,
@@ -93,29 +95,36 @@ export function ChatMessageList({
   }, [reserveLatestExchangeStartSpace, messagesScrollRef])
 
   return (
-    <div
-      ref={messagesScrollRef}
-      className="min-h-0 flex-1 overscroll-contain overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
-    >
-      <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
-        {showLoadingState ? (
-          <ChatMessageListSkeleton />
-        ) : (
-          <ChatMessages
-            state={state}
-            runtime={runtime}
-            actions={actions}
-          />
-        )}
-        <div ref={messagesEndRef} className="h-px shrink-0" />
-        {reserveLatestExchangeStartSpace ? (
-          <div
-            aria-hidden
-            className="shrink-0"
-            style={{ height: reservedSpacerHeight ?? undefined }}
-          />
-        ) : null}
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={messagesScrollRef}
+        className="h-full min-h-0 w-full overscroll-contain overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
+      >
+        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
+          {showLoadingState ? (
+            <ChatMessageListSkeleton />
+          ) : (
+            <ChatMessages
+              state={state}
+              runtime={runtime}
+              actions={actions}
+            />
+          )}
+          <div ref={messagesEndRef} className="h-px shrink-0" />
+          {reserveLatestExchangeStartSpace ? (
+            <div
+              aria-hidden
+              className="shrink-0"
+              style={{ height: reservedSpacerHeight ?? undefined }}
+            />
+          ) : null}
+        </div>
       </div>
+      {floatingControl ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
+          <div className="pointer-events-auto">{floatingControl}</div>
+        </div>
+      ) : null}
     </div>
   )
 }

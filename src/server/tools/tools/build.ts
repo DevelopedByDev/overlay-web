@@ -2,6 +2,7 @@ import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
+import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
   executeCreateNote,
@@ -102,9 +103,18 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     connected: z.boolean().optional(),
   }).strict().superRefine((input, ctx) => {
     const parsed = presentGeneratedUiVariantSchema.safeParse(input)
-    if (parsed.success) return
-    for (const issue of parsed.error.issues) {
-      ctx.addIssue(issue)
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue(issue)
+      }
+      return
+    }
+    if (generatedUiDraftContainsCode(parsed.data)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body'],
+        message: 'Code must be returned in a fenced Markdown code block, not a generated UI draft.',
+      })
     }
   })
   const automationScheduleSchema = z.discriminatedUnion('kind', [
@@ -135,6 +145,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     description:
       'Render a polished Overlay UI card in the chat for generated drafts and connector connection prompts. ' +
       'Use this when the user asks you to write an essay, memo, reusable text draft, or email, or when you need to show a connector connection card. ' +
+      'This tool is prose-only. Never put source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or other machine-readable code in a draft card; return all code in fenced Markdown code blocks instead. ' +
       'After calling this tool, do not duplicate the full draft in normal prose; write only a short lead-in if useful. ' +
       'Never use emojis, pointing-hand callouts, raw JSON, or markdown tables to imitate these cards.',
     inputSchema: presentGeneratedUiSchema,

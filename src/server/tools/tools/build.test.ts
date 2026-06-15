@@ -51,6 +51,11 @@ test('present_generated_ui still validates variant-specific required fields', as
 
   assert.equal(inputSchema.safeParse({ kind: 'draft.email', body: 'Missing subject' }).success, false)
   assert.equal(inputSchema.safeParse({ kind: 'draft.text', body: 'Draft body' }).success, true)
+  assert.equal(inputSchema.safeParse({
+    kind: 'draft.text',
+    title: 'Landing page',
+    body: '<!DOCTYPE html>\n<html><body>Hello</body></html>',
+  }).success, false)
 })
 
 test('Overlay tools expose Gateway-compatible input schemas', async () => {

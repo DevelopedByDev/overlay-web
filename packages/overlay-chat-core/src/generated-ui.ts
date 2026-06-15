@@ -67,6 +67,10 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value.trim() : undefined
 }
 
+function streamingString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
 function optionalStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
   const out = value.map(nonEmptyString).filter((item): item is string => Boolean(item))
@@ -148,6 +152,43 @@ export function isGeneratedUiData(value: unknown): value is GeneratedUiData {
   return normalizeGeneratedUiData(value) !== null
 }
 
+export function looksLikeCodeContent(value: string): boolean {
+  const text = value.trim()
+  if (!text) return false
+  if (/```|~~~/.test(text)) return true
+  if (/<!doctype\s+html|<(?:html|head|body|style|script)\b/i.test(text)) return true
+  if ((text.match(/<\/?[a-z][^>]*>/gi)?.length ?? 0) >= 2) return true
+  if (/^\s*(?:import|export)\s+.+$/m.test(text)) return true
+  if (/^\s*(?:const|let|var)\s+[$A-Z_a-z][$\w]*\s*=/m.test(text)) return true
+  if (/^\s*(?:async\s+)?function\s+[$A-Z_a-z][$\w]*\s*\(/m.test(text)) return true
+  if (/^\s*(?:def|class)\s+[A-Z_a-z]\w*\s*[:(]/m.test(text)) return true
+  if (/^\s*(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\b[\s\S]*\b(?:FROM|INTO|TABLE|SET)\b/im.test(text)) return true
+  if (/^\s*#!\/(?:usr\/bin\/env\s+)?(?:ba|z|fi)?sh\b/m.test(text)) return true
+  if (/^\s*(?:npm|pnpm|yarn|bun|git|docker|kubectl|curl|node|python(?:3)?)\s+\S+/m.test(text)) return true
+  if (/^\s*[^@\n{}]+\{[\s\S]*?[\w-]+\s*:\s*[^;{}]+;/m.test(text)) return true
+
+  if (/^[{[]/.test(text)) {
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed !== null && typeof parsed === 'object') return true
+    } catch {
+      // Partial JSON is covered by the structural checks above.
+    }
+  }
+  return false
+}
+
+export function generatedUiDraftContainsCode(value: unknown): boolean {
+  const record = asRecord(value)
+  if (!record || (record.kind !== 'draft.text' && record.kind !== 'draft.email')) return false
+  if (typeof record.body === 'string' && looksLikeCodeContent(record.body)) return true
+  if (!Array.isArray(record.variants)) return false
+  return record.variants.some((variant) => {
+    const variantRecord = asRecord(variant)
+    return typeof variantRecord?.body === 'string' && looksLikeCodeContent(variantRecord.body)
+  })
+}
+
 export function isGeneratedUiPart(value: unknown): value is GeneratedUiPart {
   const record = asRecord(value)
   if (!record) return false
@@ -173,6 +214,55 @@ export function generatedUiDataToPlainText(data: GeneratedUiData): string {
   if (data.description) lines.push(data.description)
   if (data.connectUrl) lines.push(data.connectUrl)
   return lines.join('\n')
+}
+
+export function buildStreamingGeneratedUiPart(id: string, value: unknown): GeneratedUiPart | null {
+  const record = asRecord(value)
+  const partId = nonEmptyString(id)
+  if (!record || !partId) return null
+
+  if (record.kind === 'draft.text') {
+    const body = streamingString(record.body)
+    if (generatedUiDraftContainsCode(record)) return null
+    return {
+      type: 'data',
+      id: partId,
+      dataType: GENERATED_UI_DATA_TYPE,
+      data: {
+        version: GENERATED_UI_VERSION,
+        kind: 'draft.text',
+        ...(optionalString(record.title) ? { title: optionalString(record.title) } : {}),
+        body,
+        ...(record.format === 'markdown' || record.format === 'plain' ? { format: record.format } : {}),
+      },
+      transient: true,
+    }
+  }
+
+  if (record.kind === 'draft.email') {
+    const body = streamingString(record.body)
+    if (generatedUiDraftContainsCode(record)) return null
+    const variants = normalizeVariants(record.variants)
+    return {
+      type: 'data',
+      id: partId,
+      dataType: GENERATED_UI_DATA_TYPE,
+      data: {
+        version: GENERATED_UI_VERSION,
+        kind: 'draft.email',
+        subject: streamingString(record.subject),
+        body,
+        ...(optionalStringArray(record.to) ? { to: optionalStringArray(record.to) } : {}),
+        ...(optionalStringArray(record.cc) ? { cc: optionalStringArray(record.cc) } : {}),
+        ...(optionalStringArray(record.bcc) ? { bcc: optionalStringArray(record.bcc) } : {}),
+        ...(record.provider === 'gmail' ? { provider: 'gmail' as const } : {}),
+        ...(variants ? { variants } : {}),
+      },
+      transient: true,
+    }
+  }
+
+  return null
 }
 
 export function buildGeneratedUiPart(id: string, data: unknown): GeneratedUiPart | null {
