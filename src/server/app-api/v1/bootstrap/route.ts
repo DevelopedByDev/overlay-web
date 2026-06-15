@@ -81,7 +81,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         },
         { throwOnError: true },
       ).catch((_error) => DEFAULT_APP_SETTINGS),
-      getGatewayLanguageCatalog().catch(() => []),
+      getGatewayLanguageCatalog().catch((_error) => []),
     ])
     registerGatewayCatalogModels(gatewayModels)
 
