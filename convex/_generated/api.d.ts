@@ -26,6 +26,7 @@ import type * as files_files from "../files/files.js";
 import type * as files_lib_storageQuota from "../files/lib/storageQuota.js";
 import type * as files_notes from "../files/notes.js";
 import type * as files_storageAdmin from "../files/storageAdmin.js";
+import type * as http from "../http.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   "files/lib/storageQuota": typeof files_lib_storageQuota;
   "files/notes": typeof files_notes;
   "files/storageAdmin": typeof files_storageAdmin;
+  http: typeof http;
   "integrations/mcpServers": typeof integrations_mcpServers;
   "integrations/skills": typeof integrations_skills;
   "knowledge/knowledge": typeof knowledge_knowledge;
