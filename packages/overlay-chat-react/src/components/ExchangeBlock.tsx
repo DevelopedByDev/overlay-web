@@ -13,6 +13,10 @@ import type { SourceCitationMap } from '../lib/source-citations'
 import type { WebSourceItem } from '../lib/web-sources'
 import { MarkdownMessage } from './MarkdownMessage'
 import { FlashCopyIconButton } from './DraftReviewModal'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewOpenOptions,
+} from './AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from './GeneratedUiCard'
 import { UserMessageBubble } from './UserMessageBubble'
 import {
@@ -38,11 +42,7 @@ export type UserImageAttachment = {
   mediaType?: string
 }
 
-export type AttachmentPreviewRequest = {
-  name: string
-  content: string
-  url?: string
-}
+export type AttachmentPreviewRequest = AttachmentPreview
 
 export interface ExchangeBlockProps {
   userMsgId: string
@@ -83,7 +83,10 @@ export interface ExchangeBlockProps {
   onRetry?: () => void
   retryDisabled?: boolean
   onOpenFilePreview?: (name: string, fileIds: string[]) => void
-  onOpenAttachmentPreview?: (preview: AttachmentPreviewRequest) => void
+  onOpenAttachmentPreview?: (
+    preview: AttachmentPreviewRequest,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   getModelDisplayName: (modelId: string) => string
@@ -387,6 +390,7 @@ export function ExchangeBlock({
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator
+                onOpenAttachmentPreview={onOpenAttachmentPreview}
               />
             </div>
           )

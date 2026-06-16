@@ -30,7 +30,7 @@ export { getFileType, isEditableType, isPreviewableType }
 /** Read a File object as the right content string (text or base64 data URL) */
 export async function readFileAsContent(file: File): Promise<string> {
   const type = getFileType(file.name)
-  if (type === 'text' || type === 'markdown' || type === 'csv') {
+  if (type === 'text' || type === 'html' || type === 'markdown' || type === 'csv') {
     return file.text()
   }
   return new Promise((resolve, reject) => {
@@ -180,6 +180,19 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
         <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap text-[var(--foreground)]">
           {content}
         </pre>
+      </div>
+    )
+  }
+
+  if (type === 'html') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+        <iframe
+          srcDoc={source}
+          sandbox="allow-scripts allow-forms allow-pointer-lock allow-modals"
+          className="min-h-0 flex-1 w-full border-none bg-white"
+          title={name}
+        />
       </div>
     )
   }
@@ -348,7 +361,7 @@ export function FileViewerPanel({
   headerRight?: React.ReactNode
 }) {
   const type = getFileType(name)
-  const editable = isEditable && (type === 'text' || type === 'markdown') && onContentChange
+  const editable = isEditable && (type === 'text' || type === 'html' || type === 'markdown') && onContentChange
 
   return (
     <AppScreenShell

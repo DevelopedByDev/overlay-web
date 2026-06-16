@@ -6,9 +6,13 @@ import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
 import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
 import type { ChatStreamingMode } from '../context/chat-settings'
 import { WebSourceTooltip } from './WebSourceTooltip'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewOpenOptions,
+} from './AttachmentPreviewShell'
 import { appendStreamMarker, normalizeGeneratedMarkdown } from './markdown/normalization'
 import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPlugins } from './markdown/plugins'
-import { baseMdComponents, extractLinkText } from './markdown/renderers'
+import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
 
 interface Props {
@@ -35,8 +39,12 @@ interface Props {
    * 'chunk': split into completed paragraph blocks + a separate tail block, with the
    *   pulsing Overlay logo as the trailing indicator. Steadier but content appears
    *   in jumps.
-   */
+  */
   streamingMode?: ChatStreamingMode
+  onOpenAttachmentPreview?: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
 }
 
 export function MarkdownMessage({
@@ -47,6 +55,7 @@ export function MarkdownMessage({
   suppressTypingIndicator = false,
   streamingMode = 'token',
   appBaseUrl = null,
+  onOpenAttachmentPreview,
 }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
@@ -66,6 +75,7 @@ export function MarkdownMessage({
 
   const mdRenderComponents = useMemo(
     () => {
+      const baseComponents = createBaseMdComponents({ onOpenAttachmentPreview })
       const chipClass =
         'overlay-webcite-chip mx-0.5 inline-flex max-w-full cursor-pointer items-baseline rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 align-baseline text-[11px] font-normal leading-none text-[var(--muted)] no-underline! transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]'
 
@@ -78,7 +88,7 @@ export function MarkdownMessage({
       )
 
       return {
-        ...baseMdComponents,
+        ...baseComponents,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
           const href = props.href
@@ -155,11 +165,11 @@ export function MarkdownMessage({
             )
           }
 
-          return baseMdComponents.a(props)
+          return baseComponents.a(props)
         },
       }
     },
-    [webSources, appBaseUrl],
+    [webSources, appBaseUrl, onOpenAttachmentPreview],
   )
   // Smooth pacer: while streaming in token mode, reveal the normalized text one
   // character at a time at a steady rate. When not streaming (or in chunk mode),

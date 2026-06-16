@@ -1,7 +1,11 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import type { AttachmentPreview, AttachmentPreviewMode } from '@overlay/chat-react'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewMode,
+  AttachmentPreviewOpenOptions,
+} from '@overlay/chat-react'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { shouldFetchTextContent } from '@/shared/files/file-viewer-types'
@@ -39,10 +43,13 @@ export function useChatPanels() {
     }
   }, [])
 
-  const openAttachmentPreview = useCallback((preview: AttachmentPreview) => {
+  const openAttachmentPreview = useCallback((preview: AttachmentPreview, options?: AttachmentPreviewOpenOptions) => {
     setSourcesPanel(null)
+    if (options?.mode) {
+      setAttachmentPreviewMode(options.mode)
+    }
     setAttachmentPreview(preview)
-  }, [])
+  }, [setAttachmentPreviewMode])
 
   const openFilePreview = useCallback(async (name: string, fileIds: string[]) => {
     const fileId = fileIds[0]

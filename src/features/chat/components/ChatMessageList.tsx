@@ -6,7 +6,11 @@ import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
-import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewOpenOptions,
+  GeneratedUiConnectorActions,
+} from '@overlay/chat-react'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { streamingReservedSpacerHeight } from '../lib/constrain-streaming-scroll'
 import { ChatMessage } from './ChatMessage'
@@ -48,7 +52,10 @@ export type ChatMessageListActions = {
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
-  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenAttachmentPreview: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
   onContinue: () => void
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions

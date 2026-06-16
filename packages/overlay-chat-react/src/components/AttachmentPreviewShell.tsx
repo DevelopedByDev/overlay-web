@@ -13,6 +13,10 @@ export type AttachmentPreview = {
   fileId?: string
 }
 
+export type AttachmentPreviewOpenOptions = {
+  mode?: AttachmentPreviewMode
+}
+
 type AttachmentViewerRenderProps = {
   preview: AttachmentPreview
   headerRight: ReactNode

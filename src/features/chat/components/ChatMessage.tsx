@@ -9,7 +9,11 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
-import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewOpenOptions,
+  GeneratedUiConnectorActions,
+} from '@overlay/chat-react'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
   assistantBlocksToPlainText,
@@ -60,7 +64,10 @@ type TextChatMessageProps = CommonMessageProps & {
   onOpenSources: Parameters<typeof ChatToolSurface>[0]['onOpenSources']
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
-  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenAttachmentPreview: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
   onContinue: () => void
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions

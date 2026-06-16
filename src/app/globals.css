@@ -318,6 +318,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.45rem 0.9rem;
   background: var(--surface-subtle);
   border-bottom: 1px solid var(--border);
@@ -340,6 +341,61 @@ html {
 
 .code-block-copy:hover {
   color: var(--foreground);
+}
+
+.code-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.code-block-action {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.code-block-action:hover:not(:disabled),
+.code-block-action[data-active='true'] {
+  border-color: var(--border);
+  background: var(--surface-elevated);
+  color: var(--foreground);
+}
+
+.code-block-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.code-block-render {
+  min-height: 320px;
+  background: #fff;
+}
+
+.code-block-render-frame {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 58vh, 560px);
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .code-block-render {
+    min-height: 260px;
+  }
+
+  .code-block-render-frame {
+    height: clamp(260px, 55vh, 460px);
+  }
 }
 
 /* Prism / syntax-highlighter: keep code body on-theme in dark mode (inline styles from oneLight otherwise win). */

@@ -1,6 +1,18 @@
-import { lazy,Suspense,useState,useSyncExternalStore,type ReactNode } from 'react'
+import { Code2, Copy, PanelRightOpen, Play } from 'lucide-react'
+import { lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
+import type {
+  AttachmentPreview,
+  AttachmentPreviewOpenOptions,
+} from '../AttachmentPreviewShell'
 
 const LazySyntaxHighlighter = lazy(() => import('../LazySyntaxHighlighter'))
+
+export type MarkdownCodeBlockActions = {
+  onOpenAttachmentPreview?: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
+}
 
 function useDocumentThemeIsDark(): boolean {
   return useSyncExternalStore(
@@ -39,31 +51,148 @@ const CONNECT_SERVICE_DESCRIPTIONS: Record<string, string> = {
   'linkedin': 'Manage posts and profile actions',
 }
 
-// Custom code block with syntax highlighting and copy button
-function CodeBlock({ language, children }: { language: string; children: string }) {
-  const [copied, setCopied] = useState(false)
-  const isDark = useDocumentThemeIsDark()
+function isHtmlLanguage(language: string): boolean {
+  return /^(html?|xhtml)$/i.test(language.trim())
+}
 
-  function handleCopy() {
-    navigator.clipboard.writeText(children).then(() => {
+function languageLabel(language: string): string {
+  return language.trim() || 'code'
+}
+
+function HtmlPreviewFrame({ html, title }: { html: string; title: string }) {
+  return (
+    <iframe
+      title={title}
+      srcDoc={html}
+      sandbox="allow-scripts allow-forms allow-pointer-lock allow-modals"
+      className="code-block-render-frame"
+    />
+  )
+}
+
+function CodeBlockIconButton({
+  label,
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      className="code-block-action"
+      data-active={active ? 'true' : undefined}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Custom code block with syntax highlighting, copy, and HTML render controls.
+function CodeBlock({
+  language,
+  children,
+  onOpenAttachmentPreview,
+}: {
+  language: string
+  children: string
+} & MarkdownCodeBlockActions) {
+  const [copied, setCopied] = useState(false)
+  const [mode, setMode] = useState<'code' | 'render'>('code')
+  const isDark = useDocumentThemeIsDark()
+  const previewTitleId = useId()
+  const html = children
+  const htmlBlock = isHtmlLanguage(language)
+  const label = languageLabel(language)
+
+  async function handleCopy() {
+    let copiedSuccessfully = false
+    try {
+      await navigator.clipboard.writeText(children)
+      copiedSuccessfully = true
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = children
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.top = '-1000px'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        copiedSuccessfully = document.execCommand('copy')
+      } finally {
+        document.body.removeChild(textarea)
+      }
+    }
+    if (copiedSuccessfully) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    }
+  }
+
+  function handleOpenSidebar() {
+    onOpenAttachmentPreview?.(
+      {
+        name: 'html-render.html',
+        content: html,
+      },
+      { mode: 'panel' },
+    )
   }
 
   return (
     <div className="code-block-wrapper">
       <div className="code-block-header">
-        <span className="code-block-lang">{language}</span>
-        <button type="button" className="code-block-copy" onClick={handleCopy}>
-          {copied ? 'Copied!' : 'Copy code'}
-        </button>
+        <span className="code-block-lang">{label}</span>
+        <div className="code-block-actions">
+          {htmlBlock ? (
+            <>
+              <CodeBlockIconButton label="Show code" active={mode === 'code'} onClick={() => setMode('code')}>
+                <Code2 size={14} strokeWidth={1.8} />
+              </CodeBlockIconButton>
+              <CodeBlockIconButton label="Render HTML" active={mode === 'render'} onClick={() => setMode('render')}>
+                <Play size={14} strokeWidth={1.9} />
+              </CodeBlockIconButton>
+            </>
+          ) : null}
+          <CodeBlockIconButton label={copied ? 'Copied' : 'Copy code'} onClick={handleCopy}>
+            <Copy size={14} strokeWidth={1.8} />
+          </CodeBlockIconButton>
+          {htmlBlock ? (
+            <CodeBlockIconButton
+              label="Open render in sidebar"
+              disabled={!onOpenAttachmentPreview}
+              onClick={handleOpenSidebar}
+            >
+              <PanelRightOpen size={14} strokeWidth={1.8} />
+            </CodeBlockIconButton>
+          ) : null}
+        </div>
       </div>
-      <Suspense fallback={<pre className="m-0 overflow-x-auto p-3 text-sm"><code>{children}</code></pre>}>
-        <LazySyntaxHighlighter isDark={isDark} language={language}>
-          {children}
-        </LazySyntaxHighlighter>
-      </Suspense>
+      {htmlBlock && mode === 'render' ? (
+        <div className="code-block-render" aria-labelledby={previewTitleId}>
+          <span id={previewTitleId} className="sr-only">Rendered HTML preview</span>
+          <HtmlPreviewFrame html={html} title="Rendered HTML preview" />
+        </div>
+      ) : (
+        <Suspense fallback={<pre className="m-0 overflow-x-auto p-3 text-sm"><code>{children}</code></pre>}>
+          <LazySyntaxHighlighter isDark={isDark} language={language}>
+            {children}
+          </LazySyntaxHighlighter>
+        </Suspense>
+      )}
     </div>
   )
 }
@@ -140,4 +269,22 @@ export const baseMdComponents = {
   th({ children }: any) {
     return <th className="align-top">{children}</th>
   },
+}
+
+export function createBaseMdComponents(actions: MarkdownCodeBlockActions = {}) {
+  return {
+    ...baseMdComponents,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    code(props: any) {
+      const match = /language-(\w+)/.exec(props.className || '')
+      if (match) {
+        return (
+          <CodeBlock language={match[1]} onOpenAttachmentPreview={actions.onOpenAttachmentPreview}>
+            {String(props.children).replace(/\n$/, '')}
+          </CodeBlock>
+        )
+      }
+      return <code className={props.className}>{props.children}</code>
+    },
+  }
 }

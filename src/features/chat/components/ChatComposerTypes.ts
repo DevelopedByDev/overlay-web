@@ -2,6 +2,7 @@ import type { ClipboardEventHandler, Dispatch, ReactNode, RefObject, SetStateAct
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
+import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/chat-react'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
@@ -13,7 +14,10 @@ export type ChatComposerAttachmentState = {
   pendingChatDocuments: PendingChatDocument[]; removePendingDocument: (clientId: string) => void
   attachmentError: string | null; fileInputRef: RefObject<HTMLInputElement | null>; docInputRef: RefObject<HTMLInputElement | null>
   onAddImages: (files: FileList | File[]) => void; onAddDocumentsFromPicker: (files: FileList | File[] | null) => void
-  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenAttachmentPreview: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
 }
 export type ChatComposerRuntime = {

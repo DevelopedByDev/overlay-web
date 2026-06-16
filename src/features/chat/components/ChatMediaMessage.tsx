@@ -2,7 +2,12 @@
 
 import Image from 'next/image'
 import { Reply, Trash2 } from 'lucide-react'
-import { MediaSlotOutput, UserMessageBubble } from '@overlay/chat-react'
+import {
+  MediaSlotOutput,
+  UserMessageBubble,
+  type AttachmentPreview,
+  type AttachmentPreviewOpenOptions,
+} from '@overlay/chat-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
@@ -22,7 +27,10 @@ export type ChatMediaMessageProps = {
   onJumpToReply: (turnId: string) => void
   onDeleteTurn: (turnId: string) => void | Promise<void>
   onReplyToMediaPrompt: (prompt: string, kind: 'image' | 'video', turnId: string | null) => void
-  onOpenAttachmentPreview: (preview: { name: string; content: string; url?: string }) => void
+  onOpenAttachmentPreview: (
+    preview: AttachmentPreview,
+    options?: AttachmentPreviewOpenOptions,
+  ) => void
 }
 
 export function ChatMediaMessage({
