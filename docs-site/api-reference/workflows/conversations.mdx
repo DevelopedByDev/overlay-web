@@ -1,0 +1,22 @@
+---
+title: "Conversations Workflow"
+description: "Create, update, stream, and stop web conversations."
+---
+
+Use the typed `@overlay/api-client` conversation methods when possible.
+
+Typical flow:
+
+1. Create or load a conversation with `/api/v1/conversations`.
+2. Add user-visible messages with `/api/v1/conversations/message`.
+3. Run an Act turn with `/api/v1/conversations/act`.
+4. Create stream credentials with `/api/v1/conversations/stream-auth` when the client needs resumable streaming.
+5. Stop an active turn with `/api/v1/conversations/stop`.
+
+Conversation messages may contain text, file references, generated UI data, and tool invocation parts. Keep generated and persisted message shapes aligned with `@overlay/app-core`.
+
+For title generation:
+
+```http
+POST /api/v1/generate-title
+```

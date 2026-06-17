@@ -1,0 +1,42 @@
+---
+title: "Runtime Config"
+description: "Configure Overlay Web with overlay.config.json and environment overrides."
+---
+
+Overlay Web loads runtime configuration in this precedence order:
+
+1. Environment variables.
+2. `OVERLAY_CONFIG_FILE`, normally `overlay.config.json`.
+3. Defaults in `src/shared/config/defaultOverlayRuntimeConfig.ts`.
+
+Use environment variables for secrets. Use JSON config for non-secret deployment shape such as provider choices, storage bucket names, capability flags, and CSP additions.
+
+## Create a config file
+
+```bash
+cp docs/config/onprem-minimal.example.json overlay.config.json
+OVERLAY_CONFIG_FILE=overlay.config.json npm run dev
+```
+
+Validate before booting or deploying:
+
+```bash
+OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
+npm run docs:check:self-hosting
+```
+
+## Main sections
+
+| Section | Purpose |
+| --- | --- |
+| `app` | Public URL, deployment environment, CSP connect-src additions, and public env keys. |
+| `auth` | WorkOS, OIDC, Keycloak, or disabled auth selection. |
+| `billing` | Stripe or disabled billing. |
+| `storage` | R2, S3, MinIO, or disabled object storage. |
+| `llm` | Gateway provider, provider key source, default model, and allowlist. |
+| `database` | Convex URL/deployment and internal API secret mapping. |
+| `capabilities` | Feature booleans consumed by browser UI and route guards. |
+
+## Capability flags
+
+Capability flags hide unsupported UI and also gate server routes. UI hiding is not an authorization boundary. Routes must still return deterministic disabled-capability responses when a feature is unavailable.

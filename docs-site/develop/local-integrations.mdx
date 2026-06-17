@@ -1,0 +1,33 @@
+---
+title: "Local Integrations"
+description: "Run provider-dependent web features during local development."
+---
+
+## Stripe webhooks
+
+Run the app locally, then forward Stripe events:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+Use matching Stripe test secrets in `.env.local`.
+
+## Auth
+
+WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.
+
+For OIDC or Keycloak deployments, verify browser callback wiring and token claims before production use.
+
+## Storage
+
+R2, S3, and MinIO flows use server-mediated upload and download routes. Test:
+
+- Presign URL creation.
+- Upload completion.
+- Owner-scoped content access.
+- File deletion.
+
+## Observability
+
+PostHog and Sentry are optional locally. Use separate projects or DSNs per environment. Do not send local secrets, access tokens, or customer data in logs.

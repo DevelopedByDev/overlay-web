@@ -1,0 +1,53 @@
+---
+title: "Quickstart"
+description: "Run Overlay Web locally against the development Convex backend."
+---
+
+## Prerequisites
+
+- Node.js 20 or newer.
+- npm.
+- Access to the development Convex deployment.
+- WorkOS credentials for sign-in flows.
+- Stripe test credentials when testing billing.
+
+## Install
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Fill in the required web environment variables before starting the app. For local web work against the development backend, prefer:
+
+```bash
+npm run dev:with-convex
+```
+
+This pushes the development Convex deployment first, then starts `next dev`.
+
+## First successful boot
+
+A healthy local boot should show:
+
+- Next.js serving the app on `localhost:3000`.
+- No runtime config error page.
+- Sign-in redirects using the configured WorkOS app.
+- `/api/v1/capabilities` returning capability metadata.
+- `/api/v1/bootstrap` returning signed-in app state after authentication.
+
+## Verify changes
+
+Use the smallest check that covers the change:
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+For docs changes:
+
+```bash
+npm run docs:check
+```

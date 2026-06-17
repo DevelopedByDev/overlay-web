@@ -1,0 +1,38 @@
+---
+title: "Convex Workflow"
+description: "How to update Convex safely for Overlay Web changes."
+---
+
+import ConvexWorkflow from "/snippets/convex-workflow.mdx";
+
+Convex owns durable app state, domain mutations, scheduled work, and some webhook processing. The web app depends on Convex for conversations, files, memory, projects, billing state, and related data.
+
+<ConvexWorkflow />
+
+## Development backend
+
+For local web work against the development Convex backend:
+
+```bash
+npm run dev:with-convex
+```
+
+This runs the development push first, then starts Next.js.
+
+## Production backend
+
+Use the production script when intentionally deploying production Convex changes:
+
+```bash
+npm run convex:push:prod
+```
+
+Use the development script for dev-only backend updates:
+
+```bash
+npm run convex:push:dev
+```
+
+## Import boundary
+
+Convex code may import browser-safe shared modules from `src/shared`. Convex must not import `src/server`, because server-only modules can break Convex bundling.

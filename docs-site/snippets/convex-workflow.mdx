@@ -1,0 +1,7 @@
+When a change touches `convex/`, push both deployments before considering the web app verified:
+
+```bash
+npm run convex:push:all
+```
+
+Do not pass `.env.local` to production Convex deploys. Use the dedicated scripts so production and development deployments receive the right environment.

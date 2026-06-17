@@ -1,0 +1,62 @@
+---
+title: "Environment Variables"
+description: "Required and optional web runtime variables for Overlay Web."
+---
+
+## Required web runtime
+
+Set real values locally and in deployed environments:
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=
+DEV_NEXT_PUBLIC_CONVEX_URL=
+NEXT_PUBLIC_APP_URL=
+DEV_NEXT_PUBLIC_APP_URL=
+
+SESSION_SECRET=
+INTERNAL_API_SECRET=
+SESSION_TRANSFER_KEY=
+SESSION_COOKIE_ENCRYPTION_KEY=
+PROVIDER_KEYS_SECRET=
+HOOKS_TOKEN_SALT=
+
+WORKOS_CLIENT_ID=
+WORKOS_API_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+```
+
+Use separate values for development and production. Production app variables must point at the production Convex deployment, WorkOS app, Stripe mode, and public app URL.
+
+## Optional integrations
+
+```bash
+AI_GATEWAY_API_KEY=
+NEXT_PUBLIC_POSTHOG_TOKEN=
+NEXT_PUBLIC_POSTHOG_HOST=
+SENTRY_DSN=
+NEXT_PUBLIC_SENTRY_DSN=
+```
+
+Provider-specific keys are needed only when exercising those features.
+
+## Secret placement
+
+Session and crypto secrets belong only on the Next.js app runtime:
+
+- `SESSION_SECRET`
+- `SESSION_TRANSFER_KEY`
+- `SESSION_COOKIE_ENCRYPTION_KEY`
+- `INTERNAL_SERVICE_AUTH_SECRET`
+
+Convex deployments need `INTERNAL_API_SECRET` matching the app environment. Do not put browser session encryption secrets in Convex.
+
+## Development vs production Convex
+
+Development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` with `.env.development.local`. Production uses `NEXT_PUBLIC_CONVEX_URL`.
+
+After editing `convex/`, run:
+
+```bash
+npm run convex:push:all
+```

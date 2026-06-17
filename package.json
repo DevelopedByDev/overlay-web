@@ -49,6 +49,9 @@
     "test:phase6-routes": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/phase6-release-gates.test.ts",
     "check:phase6": "tsx scripts/check-phase6-release-gates.ts",
     "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
+    "docs:dev": "npm run docs:generate:api && cd docs-site && node ../scripts/run-mint.mjs dev --no-open",
+    "docs:generate:api": "tsx scripts/generate-web-api-openapi.ts",
+    "docs:check": "npm run docs:generate:api && cd docs-site && node ../scripts/run-mint.mjs validate && node ../scripts/run-mint.mjs broken-links --check-anchors",
     "docs:check:self-hosting": "NODE_OPTIONS=--conditions=react-server tsx scripts/check-self-hosting-docs.ts",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "video:studio": "npx remotion studio src/remotion/index.ts",
@@ -189,10 +192,12 @@
     "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "mintlify": "^4.2.626",
     "postcss": "8.5.12",
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
-    "typescript": "^5"
+    "typescript": "^5",
+    "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
     "follow-redirects": "1.16.0",

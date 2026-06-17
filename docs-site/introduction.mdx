@@ -1,0 +1,35 @@
+---
+title: "Overlay Web"
+description: "Developer and self-hosting documentation for the Overlay web app."
+---
+
+Overlay Web is the Next.js application that powers the browser experience for Overlay. It owns the public web routes, the browser app shell, API route wrappers, server-side orchestration, provider adapters, and the shared contracts used by the app.
+
+These docs are for developers and self-hosters working with the web app. They cover local setup, runtime configuration, provider wiring, deployment, operational checks, and the stable `/api/v1` web API surface.
+
+## Scope
+
+Included:
+
+- The Next.js web app under `src/app`.
+- Web route orchestration under `src/server/app-api`.
+- Browser-safe contracts under `src/shared`.
+- Feature containers under `src/features`.
+- Convex workflow where it affects the web app.
+- Public `/api/v1` request, query, and form schemas.
+
+Excluded:
+
+- Mobile, desktop, and Chrome extension implementation details.
+- Internal audit reports and design exploration assets.
+- Private security notes.
+
+## Source of truth
+
+The API reference is generated from `src/shared/schemas/api-boundary.ts`. Prose pages explain workflows, deployment, and maintenance expectations that cannot be captured cleanly in OpenAPI.
+
+Run this before publishing docs changes:
+
+```bash
+npm run docs:check
+```

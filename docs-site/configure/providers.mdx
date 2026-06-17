@@ -1,0 +1,52 @@
+---
+title: "Providers"
+description: "Auth, billing, storage, and LLM provider options for Overlay Web."
+---
+
+## Auth
+
+Supported runtime choices:
+
+- `workos`: hosted SaaS default.
+- `oidc`: enterprise OIDC access-token verification.
+- `keycloak`: Keycloak-shaped OIDC verification.
+- `none`: local or on-prem no-op auth mode.
+
+Browser sessions use the signed `overlay_session` cookie. Native or service clients use bearer access tokens only where the route supports them.
+
+## Billing
+
+Supported runtime choices:
+
+- `stripe`: subscriptions, top-ups, portal sessions, and webhooks.
+- `none`: billing UI and billing routes are disabled or blocked.
+
+For local Stripe webhook testing:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+## Storage
+
+Supported runtime choices:
+
+- `r2`: Cloudflare R2, the hosted default.
+- `s3`: AWS S3 or compatible storage.
+- `minio`: S3-compatible local or on-prem storage with path-style access.
+- `none`: uploads are intentionally unavailable.
+
+Object access must remain private and owner-scoped. Browser clients should receive only short-lived, validated upload or download URLs.
+
+## LLM gateway
+
+Supported runtime choices:
+
+- `openrouter`
+- `ai-gateway`
+- `openai`
+- `anthropic`
+- `groq`
+- `none`
+
+The browser app should not call provider APIs directly. Route handlers and provider adapters mediate model access, key use, usage accounting, and capability checks.

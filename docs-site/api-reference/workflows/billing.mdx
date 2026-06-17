@@ -1,0 +1,24 @@
+---
+title: "Billing Workflow"
+description: "Read subscription state and update billing settings."
+---
+
+Billing state comes from Stripe webhook processing and Convex-backed entitlement state.
+
+Core web API routes:
+
+```http
+GET /api/v1/subscription
+GET /api/v1/subscription/settings
+POST /api/v1/subscription/settings
+```
+
+Checkout, portal, top-up, and webhook endpoints also exist under non-`/api/v1` app routes. They are web-app routes rather than part of the generated public `/api/v1` reference.
+
+For local webhook testing:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+When billing is disabled, pair `billing.provider="none"` with `capabilities.billing=false`.

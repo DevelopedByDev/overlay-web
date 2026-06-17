@@ -1,0 +1,76 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Overlay Web",
+  "description": "Developer and self-hosting documentation for the Overlay web app.",
+  "colors": {
+    "primary": "#111827"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "contextual": {
+    "options": ["copy", "download-spec", "chatgpt", "claude"]
+  },
+  "api": {
+    "playground": {
+      "display": "interactive",
+      "proxy": false
+    },
+    "examples": {
+      "languages": ["typescript", "javascript", "curl"],
+      "defaults": "required"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start",
+        "pages": ["introduction", "start/quickstart", "start/repository-map"]
+      },
+      {
+        "group": "Configure",
+        "pages": ["configure/environment", "configure/runtime-config", "configure/providers"]
+      },
+      {
+        "group": "Develop",
+        "pages": ["develop/architecture", "develop/convex-workflow", "develop/local-integrations"]
+      },
+      {
+        "group": "Deploy & Operate",
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/release-gates", "deploy-operate/security"]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api-reference/overview",
+          {
+            "group": "Generated endpoints",
+            "openapi": {
+              "source": "openapi/overlay-web.openapi.json",
+              "directory": "api-reference/endpoints"
+            }
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "api-reference/workflows/bootstrap",
+              "api-reference/workflows/conversations",
+              "api-reference/workflows/files",
+              "api-reference/workflows/memory-knowledge",
+              "api-reference/workflows/automations",
+              "api-reference/workflows/billing"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Legal",
+        "pages": ["legal/licensing", "legal/self-hosting-obligations", "legal/security-reporting"]
+      }
+    ]
+  }
+}

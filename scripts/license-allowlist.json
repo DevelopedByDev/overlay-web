@@ -46,11 +46,6 @@
       "reason": "package-lock omits the field; package metadata and bundled license declare ISC."
     },
     {
-      "package": "ws",
-      "licenses": ["MISSING"],
-      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
-    },
-    {
       "package": "posthog-js",
       "licenses": ["SEE LICENSE IN LICENSE"],
       "reason": "Bundled license text declares Apache-2.0."
