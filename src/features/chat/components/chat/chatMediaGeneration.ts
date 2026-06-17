@@ -49,6 +49,23 @@ export interface ScheduleMediaUpgradeFailureParams {
   delayMs?: number
 }
 
+export function buildImageGenerationRequestBody(params: {
+  promptForModel: string
+  modelId: string
+  temporaryChat?: boolean
+  chatId: string
+  turnId: string
+  imageUrl?: string | null
+}): Record<string, unknown> {
+  return {
+    prompt: params.promptForModel,
+    modelId: params.modelId,
+    ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
+    turnId: params.turnId,
+    ...(typeof params.imageUrl === 'string' && params.imageUrl.trim() ? { imageUrl: params.imageUrl } : {}),
+  }
+}
+
 function generatingResults(kind: MediaKind, activeModels: string[]): GenerationResult[] {
   return activeModels.map(() => ({ type: kind, status: 'generating' as const }))
 }
@@ -160,13 +177,7 @@ export function scheduleMediaGenerationUpgradeFailure({
 
 export function runImageGenerationBatch(params: RunImageGenerationBatchParams) {
   const generationTasks = params.activeModels.map((modelId, slotIndex) =>
-    overlayAppClient.chat.generateImageResponse({
-      prompt: params.promptForModel,
-      modelId,
-      ...(params.temporaryChat ? { temporaryChat: true } : { conversationId: params.chatId }),
-      turnId: params.turnId,
-      imageUrl: params.imageUrl,
-    })
+    overlayAppClient.chat.generateImageResponse(buildImageGenerationRequestBody({ ...params, modelId }))
       .then(async (res) => {
         if (!res.ok) {
           const err = await res.json().catch(() => ({ message: 'Generation failed' }))
