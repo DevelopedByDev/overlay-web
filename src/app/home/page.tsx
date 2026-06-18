@@ -3,6 +3,7 @@
 import {
   Bot,
   Brain,
+  Check,
   Code2,
   FileText,
   MessageSquare,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
+import { MarketingButton } from "@/features/marketing/components/MarketingButton";
 import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import {
@@ -21,12 +23,16 @@ import {
   MarketingBand,
   MarketingCtaRow,
   PricingControlPreview,
-  PrimaryMarketingLink,
   ProductWorkspaceDemo,
   ScreenshotFrame,
-  SecondaryMarketingLink,
-  TrustStrip,
 } from "@/features/marketing/components/MarketingShowcase";
+import {
+  marketingEyebrow,
+  marketingHeroGrid,
+  marketingHeadingLg,
+  marketingIconChip,
+  marketingSerifStyle,
+} from "@/features/landing/lib/landingPageStyles";
 import { MARKETING_GITHUB_URL, MARKETING_SALES_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
 const WORKFLOWS = [
@@ -61,6 +67,8 @@ const PRIMITIVES = [
   { icon: Code2, label: "Open source", detail: "Inspect, extend, self-host, and adapt." },
 ];
 
+const HERO_BULLETS = ["Self-hostable", "Model choice", "Usage-based AI"];
+
 function HomeLandingContent() {
   const { isAuthenticated } = useAuth();
   const webAppHref = getMarketingAppHref(isAuthenticated);
@@ -68,8 +76,9 @@ function HomeLandingContent() {
   return (
     <StaticMarketingShell>
       <main className="flex-1">
+        {/* Hero */}
         <section className="px-5 py-16 md:px-8 md:py-24">
-          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.62fr_1.38fr] lg:items-center">
+          <div className={marketingHeroGrid()}>
             <div>
               <EditorialIntro
                 title={
@@ -82,15 +91,19 @@ function HomeLandingContent() {
                 body="One workspace for models, files, memory, tools, and automations. Private by default. Open source. Yours to extend."
               />
               <MarketingCtaRow>
-                <PrimaryMarketingLink href={webAppHref}>Open app</PrimaryMarketingLink>
-                <SecondaryMarketingLink href={MARKETING_SALES_URL} external>
+                <MarketingButton href={webAppHref} variant="primary" arrow="right">
+                  Open app
+                </MarketingButton>
+                <MarketingButton href={MARKETING_SALES_URL} external variant="secondary" arrow="up-right">
                   Contact sales
-                </SecondaryMarketingLink>
+                </MarketingButton>
               </MarketingCtaRow>
               <div className="mt-8 grid gap-3 text-xs text-[var(--muted)] sm:grid-cols-3">
-                {["Self-hostable", "Model choice", "Usage-based AI"].map((item) => (
+                {HERO_BULLETS.map((item) => (
                   <div key={item} className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--foreground)]" />
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)]">
+                      <Check className="h-2.5 w-2.5" strokeWidth={2.2} />
+                    </span>
                     {item}
                   </div>
                 ))}
@@ -100,17 +113,20 @@ function HomeLandingContent() {
           </div>
         </section>
 
+        {/* Product primitives */}
         <MarketingBand id="product">
           <div className="grid gap-10 lg:grid-cols-[0.45fr_1fr] lg:items-start">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Product</p>
-              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">The primitives of AI-native work, in one surface.</h2>
+              <p className={marketingEyebrow()}>Product</p>
+              <h2 className={`mt-4 ${marketingHeadingLg()}`} style={marketingSerifStyle()}>
+                The primitives of AI-native work, in one surface.
+              </h2>
               <p className="mt-5 text-sm leading-7 text-[var(--muted)]">
                 Overlay is not another isolated chat box. It is the control surface between people, models, files,
                 tools, connectors, and recurring work.
               </p>
             </div>
-            <div className="grid gap-px overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--border)] md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-px overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--border)] md:grid-cols-2 xl:grid-cols-3">
               {PRIMITIVES.map((item) => (
                 <article key={item.label} className="bg-[var(--surface-elevated)] p-5">
                   <item.icon className="h-5 w-5" strokeWidth={1.7} />
@@ -122,16 +138,19 @@ function HomeLandingContent() {
           </div>
         </MarketingBand>
 
+        {/* Workflows */}
         <MarketingBand>
           <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
             <ProductWorkspaceDemo tone="dark" compact title="Work keeps moving." />
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Workflows</p>
-              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">From prompt to outcome without resetting context.</h2>
+              <p className={marketingEyebrow()}>Workflows</p>
+              <h2 className={`mt-4 ${marketingHeadingLg()}`} style={marketingSerifStyle()}>
+                From prompt to outcome without resetting context.
+              </h2>
               <div className="mt-8 divide-y divide-[var(--border)] border-y border-[var(--border)]">
                 {WORKFLOWS.map((workflow) => (
                   <article key={workflow.title} className="grid gap-4 py-5 sm:grid-cols-[44px_1fr]">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
+                    <span className={marketingIconChip()}>
                       <workflow.icon className="h-5 w-5" strokeWidth={1.7} />
                     </span>
                     <div>
@@ -145,6 +164,7 @@ function HomeLandingContent() {
           </div>
         </MarketingBand>
 
+        {/* Screenshots */}
         <MarketingBand>
           <div className="grid gap-5 lg:grid-cols-2">
             <ScreenshotFrame
@@ -160,30 +180,50 @@ function HomeLandingContent() {
           </div>
         </MarketingBand>
 
+        {/* Pricing */}
         <MarketingBand>
           <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Pricing</p>
-              <h2 className="mt-4 text-3xl tracking-tight md:text-5xl">Pay for the platform and the AI you actually use.</h2>
+              <p className={marketingEyebrow()}>Pricing</p>
+              <h2 className={`mt-4 ${marketingHeadingLg()}`} style={marketingSerifStyle()}>
+                Pay for the platform and the AI you actually use.
+              </h2>
               <p className="mt-5 text-sm leading-7 text-[var(--muted)]">
                 Start free, upgrade when premium models and agents matter, and move enterprise usage into a private
                 deployment when governance becomes the priority.
               </p>
               <MarketingCtaRow>
-                <PrimaryMarketingLink href="/pricing">View pricing</PrimaryMarketingLink>
-                <SecondaryMarketingLink href={MARKETING_GITHUB_URL} external>
+                <MarketingButton href="/pricing" variant="primary" arrow="right">
+                  View pricing
+                </MarketingButton>
+                <MarketingButton href={MARKETING_GITHUB_URL} external variant="secondary" arrow="up-right">
                   View source
-                </SecondaryMarketingLink>
+                </MarketingButton>
               </MarketingCtaRow>
             </div>
             <PricingControlPreview amount="$24" />
           </div>
         </MarketingBand>
 
+        {/* Closing CTA */}
         <MarketingBand>
-          <TrustStrip />
-          <div className="mt-8 text-sm leading-7 text-[var(--muted)]">
-            [VIDEO: 45s product loop showing model selection, file reference, browser tool, and saved automation]
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className={marketingHeadingLg()} style={marketingSerifStyle()}>
+              Start with the free tier.
+              <br />
+              Upgrade when the work demands it.
+            </h2>
+            <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-7 text-[var(--muted)] md:text-lg">
+              No per-seat subscriptions. No vendor lock-in. Pay for platform access and the AI you actually use.
+            </p>
+            <MarketingCtaRow className="justify-center">
+              <MarketingButton href={webAppHref} variant="primary" arrow="right">
+                Open app
+              </MarketingButton>
+              <MarketingButton href="/pricing" variant="secondary" arrow="right">
+                View pricing
+              </MarketingButton>
+            </MarketingCtaRow>
           </div>
         </MarketingBand>
       </main>
