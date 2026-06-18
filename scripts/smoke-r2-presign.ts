@@ -33,6 +33,13 @@ function logErr(msg: string, err?: unknown) {
   console.error(`[R2-Presign] ✗ ${msg}`, err ?? '')
 }
 
+function resolveCorsOrigin(): string | null {
+  return process.env['R2_CORS_ORIGIN']?.trim() ||
+    process.env['NEXT_PUBLIC_APP_URL']?.trim() ||
+    process.env['DEV_NEXT_PUBLIC_APP_URL']?.trim() ||
+    null
+}
+
 async function main() {
   console.log('[R2-Presign] Starting R2 presigned URL smoke test...')
 
@@ -42,10 +49,12 @@ async function main() {
   const bucketName = requireEnv('R2_BUCKET_NAME')
   const ttlSeconds = parseInt(process.env['R2_PRESIGN_TTL_SECONDS'] ?? '300', 10)
   const endpoint = process.env['S3_API']?.trim() || `https://${accountId}.r2.cloudflarestorage.com`
+  const corsOrigin = resolveCorsOrigin()
 
   console.log(`[R2-Presign] Endpoint : ${endpoint}`)
   console.log(`[R2-Presign] Bucket   : ${bucketName}`)
   console.log(`[R2-Presign] TTL      : ${ttlSeconds}s`)
+  if (corsOrigin) console.log(`[R2-Presign] Origin   : ${corsOrigin}`)
 
   const client = new S3Client({
     region: 'auto',
@@ -78,7 +87,40 @@ async function main() {
     process.exit(1)
   }
 
-  // ── 2. Upload via fetch() (simulates browser PUT) ────────────────────────
+  // ── 2. Verify browser preflight for the presigned PUT URL ────────────────
+  if (corsOrigin) {
+    logStep('Checking browser CORS preflight for presigned PUT URL')
+    try {
+      const preflightRes = await fetch(putUrl, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: corsOrigin,
+          'Access-Control-Request-Method': 'PUT',
+          'Access-Control-Request-Headers': 'content-type',
+        },
+      })
+      const allowOrigin = preflightRes.headers.get('access-control-allow-origin')
+      const allowMethods = preflightRes.headers.get('access-control-allow-methods') ?? ''
+      if (
+        preflightRes.status !== 204 ||
+        allowOrigin !== corsOrigin ||
+        !allowMethods.split(',').map((method) => method.trim().toUpperCase()).includes('PUT')
+      ) {
+        logErr(
+          `CORS preflight failed: HTTP ${preflightRes.status}; allow-origin=${allowOrigin}; allow-methods=${allowMethods}`,
+        )
+        process.exit(1)
+      }
+      logOk(`CORS preflight allows ${corsOrigin} to PUT`)
+    } catch (err) {
+      logErr('CORS preflight threw an error', err)
+      process.exit(1)
+    }
+  } else {
+    console.log('[R2-Presign] Skipping CORS preflight; set R2_CORS_ORIGIN to verify browser uploads.')
+  }
+
+  // ── 3. Upload via fetch() (simulates non-browser PUT) ────────────────────
   logStep('Uploading via fetch() to presigned PUT URL (browser simulation)')
   const t1 = Date.now()
   try {
@@ -98,7 +140,7 @@ async function main() {
     process.exit(1)
   }
 
-  // ── 3. Verify object exists via HeadObject ────────────────────────────────
+  // ── 4. Verify object exists via HeadObject ───────────────────────────────
   logStep('Verifying object exists via HeadObject')
   try {
     const head = await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: testKey }))
@@ -108,7 +150,7 @@ async function main() {
     process.exit(1)
   }
 
-  // ── 4. Generate presigned GET URL ────────────────────────────────────────
+  // ── 5. Generate presigned GET URL ────────────────────────────────────────
   logStep('Generating presigned GET URL')
   let getUrl: string
   const t2 = Date.now()
@@ -125,7 +167,7 @@ async function main() {
     process.exit(1)
   }
 
-  // ── 5. Download via fetch() and verify content ───────────────────────────
+  // ── 6. Download via fetch() and verify content ───────────────────────────
   logStep('Downloading via fetch() from presigned GET URL')
   const t3 = Date.now()
   try {
@@ -145,7 +187,7 @@ async function main() {
     process.exit(1)
   }
 
-  // ── 6. Delete object ──────────────────────────────────────────────────────
+  // ── 7. Delete object ──────────────────────────────────────────────────────
   logStep(`Cleaning up: deleting ${testKey}`)
   const t4 = Date.now()
   try {
