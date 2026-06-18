@@ -3,16 +3,16 @@ import type { ReactNode } from "react";
 import {
   ArrowRight,
   Bot,
-  Brain,
   BriefcaseBusiness,
   Check,
   Code2,
   FileText,
+  FolderOpen,
   GraduationCap,
   Image as ImageIcon,
   Lock,
   MessageSquare,
-  Plug,
+  Puzzle,
   Search,
   ShieldCheck,
   Sparkles,
@@ -129,43 +129,28 @@ export function SecondaryMarketingLink({
   );
 }
 
-const demoPalette = {
-  light: {
-    root: "border-[var(--border)] bg-white text-[#0a0a0a] shadow-[0_18px_60px_rgba(0,0,0,0.08)]",
-    sidebar: "border-[#e4e4e7] bg-[#f5f5f5]",
-    top: "border-[#e4e4e7] bg-white",
-    panel: "border-[#e4e4e7] bg-white",
-    panelSubtle: "border-[#e4e4e7] bg-[#fafafa]",
-    active: "bg-[#ededed] text-[#0a0a0a]",
-    muted: "text-[#71717a]",
-    faint: "text-[#a1a1aa]",
-    control: "border-[#e4e4e7] bg-[#f5f5f5]",
-    sendButton: "bg-[#0a0a0a] text-white",
-  },
-  dark: {
-    root: "border-[#27272a] bg-[#09090b] text-[#f5f5f5] shadow-[0_18px_60px_rgba(0,0,0,0.35)]",
-    sidebar: "border-[#27272a] bg-[#111113]",
-    top: "border-[#27272a] bg-[#09090b]",
-    panel: "border-[#27272a] bg-[#111113]",
-    panelSubtle: "border-[#27272a] bg-[#151518]",
-    active: "bg-[#1c1c20] text-[#f5f5f5]",
-    muted: "text-[#a1a1aa]",
-    faint: "text-[#71717a]",
-    control: "border-[#27272a] bg-[#151518]",
-    sendButton: "bg-[#f5f5f5] text-[#0a0a0a]",
-  },
-};
-
-const navItems = [
+// Nav items mirror the real app sidebar (DEFAULT_OVERLAY_NAVIGATION in @overlay/app-core):
+// Chat, Files, Extensions, Projects, Automations — same icons, same order.
+const demoNavItems = [
   { label: "Chat", icon: MessageSquare },
   { label: "Files", icon: FileText },
-  { label: "Memory", icon: Brain },
+  { label: "Extensions", icon: Puzzle },
+  { label: "Projects", icon: FolderOpen },
   { label: "Automations", icon: Workflow },
-  { label: "Connectors", icon: Plug },
 ];
 
+/**
+ * Token-based product workspace mockup. Mirrors the real app layout:
+ * w-56 sidebar (SidebarShell), h-9 rounded-md nav items (AppSidebar),
+ * rounded-xl send button, rounded-lg composer. All colors come from CSS
+ * variables so it responds to light/dark automatically.
+ *
+ * `tone` forces a specific theme via a scoped `data-theme` wrapper — useful
+ * for contrast sections (e.g. a dark demo on a light page). When omitted,
+ * the demo inherits the surrounding page theme.
+ */
 export function ProductWorkspaceDemo({
-  tone = "light",
+  tone,
   compact = false,
   title = "Hi there!",
 }: {
@@ -173,58 +158,77 @@ export function ProductWorkspaceDemo({
   compact?: boolean;
   title?: string;
 }) {
-  const p = demoPalette[tone];
-  return (
-    <div className={cx("overflow-hidden rounded-lg border", p.root)}>
-      <div className={cx("grid min-h-[420px]", compact ? "md:grid-cols-[150px_minmax(0,1fr)]" : "md:grid-cols-[190px_minmax(0,1fr)_220px]")}>
-        <aside className={cx("hidden border-r p-3 md:block", p.sidebar)}>
+  const inner = (
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
+      <div
+        className={cx(
+          "grid min-h-[420px]",
+          compact ? "md:grid-cols-[180px_minmax(0,1fr)]" : "md:grid-cols-[224px_minmax(0,1fr)_240px]",
+        )}
+      >
+        {/* Sidebar — mirrors SidebarShell (w-56, border-r, sidebar-surface) */}
+        <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
           <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full bg-current opacity-70" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[var(--foreground)] opacity-70" />
             <span className="font-medium">overlay</span>
           </div>
-          <div className="mt-5 space-y-1">
-            {navItems.map((item, index) => (
+          <div className="mt-4 space-y-0.5">
+            {demoNavItems.map((item, index) => (
               <div
                 key={item.label}
-                className={cx("flex items-center gap-2 rounded-md px-2.5 py-2 text-xs", index === 0 ? p.active : p.muted)}
+                className={cx(
+                  "flex h-9 items-center rounded-md px-3 text-sm transition-colors",
+                  index === 0
+                    ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                    : "text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]",
+                )}
               >
-                <item.icon className="h-3.5 w-3.5" strokeWidth={1.7} />
-                {item.label}
+                <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+                <span className="ml-2.5">{item.label}</span>
               </div>
             ))}
           </div>
-          <div className={cx("mt-6 rounded-md border p-2", p.control)}>
-            <div className="text-[11px] text-current opacity-70">Recent work</div>
+          <div className="mt-5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-2">
+            <div className="text-[11px] text-[var(--muted-light)]">Recent work</div>
             {["Q1 planning", "Customer analysis", "Worksheet draft"].map((item) => (
-              <div key={item} className={cx("mt-2 truncate text-[11px]", p.faint)}>
+              <div key={item} className="mt-2 truncate text-[11px] text-[var(--muted-light)]">
                 {item}
               </div>
             ))}
           </div>
         </aside>
 
+        {/* Main content */}
         <div className="min-w-0">
-          <div className={cx("flex h-12 items-center justify-between border-b px-4", p.top)}>
+          <div className="flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
             <div className="text-xs font-medium">New conversation</div>
             <div className="flex items-center gap-2">
-              <span className={cx("rounded-md border px-2.5 py-1 text-[11px]", p.control)}>GPT-5.4</span>
-              <span className={cx("hidden rounded-md border px-2.5 py-1 text-[11px] sm:inline-flex", p.control)}>Tools</span>
+              <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[11px]">
+                GPT-5.4
+              </span>
+              <span className="hidden rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] sm:inline-flex">
+                Tools
+              </span>
             </div>
           </div>
           <div className="flex min-h-[360px] flex-col items-center justify-center px-4 py-8">
             <p className="text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
               {title}
             </p>
-            <div className={cx("mt-8 w-full max-w-xl rounded-lg border p-4", p.panel)}>
-              <p className={cx("text-sm", p.faint)}>Ask anything, use @ to reference files, memory, tools...</p>
+            {/* Composer — rounded-lg input matching app Input primitive */}
+            <div className="mt-8 w-full max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+              <p className="text-sm text-[var(--muted-light)]">
+                Ask anything, use @ to reference files, memory, tools...
+              </p>
               <div className="mt-7 flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm">
-                  <span className={p.muted}>+</span>
-                  <span className={p.muted}>@</span>
+                <div className="flex items-center gap-4 text-sm text-[var(--muted)]">
+                  <span>+</span>
+                  <span>@</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={cx("hidden text-xs sm:inline", p.muted)}>Chat</span>
-                  <span className={cx("flex h-9 w-9 items-center justify-center rounded-md", p.sendButton)}>
+                  <span className="hidden text-xs text-[var(--muted)] sm:inline">Chat</span>
+                  {/* Send button — rounded-xl matching app Button lg size */}
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]">
                     <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
                   </span>
                 </div>
@@ -232,7 +236,10 @@ export function ProductWorkspaceDemo({
             </div>
             <div className="mt-4 grid w-full max-w-xl gap-2 sm:grid-cols-2">
               {["Summarize this folder", "Create a report", "What changed?", "Build an automation"].map((prompt) => (
-                <div key={prompt} className={cx("rounded-md border px-3 py-2 text-xs", p.panelSubtle, p.muted)}>
+                <div
+                  key={prompt}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--muted)]"
+                >
                   {prompt}
                 </div>
               ))}
@@ -240,13 +247,17 @@ export function ProductWorkspaceDemo({
           </div>
         </div>
 
+        {/* Right rail — files, memory, connectors */}
         {!compact ? (
-          <aside className={cx("hidden border-l p-3 md:block", p.sidebar)}>
-            <RailBlock title="Files" items={["Q1 plan.docx", "Financials.xlsx", "Roadmap.pdf"]} palette={p} />
-            <RailBlock title="Memory" items={["Project brief", "Customer prefs", "Launch plan"]} palette={p} className="mt-5" />
+          <aside className="hidden border-l border-[var(--border)] bg-[var(--sidebar-surface)] p-3 md:block">
+            <RailBlock title="Files" items={["Q1 plan.docx", "Financials.xlsx", "Roadmap.pdf"]} />
+            <RailBlock title="Memory" items={["Project brief", "Customer prefs", "Launch plan"]} className="mt-5" />
             <div className="mt-5 flex flex-wrap gap-1.5">
               {["Drive", "Notion", "Slack"].map((item) => (
-                <span key={item} className={cx("rounded-md border px-2 py-1 text-[10px]", p.control, p.muted)}>
+                <span
+                  key={item}
+                  className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-[10px] text-[var(--muted)]"
+                >
                   {item}
                 </span>
               ))}
@@ -256,30 +267,29 @@ export function ProductWorkspaceDemo({
       </div>
     </div>
   );
+
+  // Force a specific theme when `tone` is set; otherwise inherit the page theme.
+  if (tone) {
+    return <div data-theme={tone}>{inner}</div>;
+  }
+  return inner;
 }
 
-function RailBlock({
-  title,
-  items,
-  palette,
-  className,
-}: {
-  title: string;
-  items: string[];
-  palette: (typeof demoPalette)["light"];
-  className?: string;
-}) {
+function RailBlock({ title, items, className }: { title: string; items: string[]; className?: string }) {
   return (
     <div className={className}>
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium">{title}</p>
-        <span className={cx("text-[10px]", palette.faint)}>View all</span>
+        <span className="text-[10px] text-[var(--muted-light)]">View all</span>
       </div>
       <div className="mt-2 space-y-1.5">
         {items.map((item) => (
-          <div key={item} className={cx("flex items-center justify-between rounded-md border px-2 py-1.5 text-[11px]", palette.panel)}>
+          <div
+            key={item}
+            className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-[11px]"
+          >
             <span className="truncate">{item}</span>
-            <span className={palette.faint}>&gt;</span>
+            <span className="text-[var(--muted-light)]">&gt;</span>
           </div>
         ))}
       </div>
@@ -324,38 +334,52 @@ const audienceData = {
   side: string[];
 }>;
 
-export function AudienceWorkflowDemo({ audience, tone = "light" }: { audience: AudiencePageKey; tone?: "light" | "dark" }) {
-  const p = demoPalette[tone];
+/**
+ * Token-based audience workflow mockup. Same CSS-variable approach as
+ * ProductWorkspaceDemo. `tone` forces a specific theme via `data-theme`.
+ */
+export function AudienceWorkflowDemo({
+  audience,
+  tone,
+}: {
+  audience: AudiencePageKey;
+  tone?: "light" | "dark";
+}) {
   const data = audienceData[audience];
   const Icon = data.icon;
 
-  return (
-    <div className={cx("overflow-hidden rounded-lg border", p.root)}>
-      <div className={cx("flex h-12 items-center justify-between border-b px-4", p.top)}>
+  const inner = (
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
+      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
         <div className="flex items-center gap-2 text-xs">
-          <span className={cx("flex h-6 w-6 items-center justify-center rounded-md border", p.control)}>
+          <span className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)]">
             <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
           </span>
           <span>{data.title}</span>
         </div>
-        <span className={cx("rounded-md border px-2.5 py-1 text-[11px]", p.control)}>Private workspace</span>
+        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[11px]">
+          Private workspace
+        </span>
       </div>
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_220px]">
         <div className="p-4">
-          <div className={cx("rounded-lg border p-4", p.panel)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
             <p className="text-sm font-medium">{data.title}</p>
-            <p className={cx("mt-2 text-xs leading-5", p.muted)}>{data.context}</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{data.context}</p>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               {data.steps.map((step, index) => (
-                <div key={step} className={cx("rounded-md border p-3", p.panelSubtle)}>
+                <div key={step} className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500/40 text-[10px] text-emerald-500">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--success)_40%,transparent)] text-[10px] text-[var(--success)]">
                       {index + 1}
                     </span>
                     <p className="text-xs font-medium">{step}</p>
                   </div>
-                  <div className={cx("mt-3 h-1.5 overflow-hidden rounded-full", tone === "dark" ? "bg-[#27272a]" : "bg-[#e4e4e7]")}>
-                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${46 + index * 13}%` }} />
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
+                    <div
+                      className="h-full rounded-full bg-[var(--success)]"
+                      style={{ width: `${46 + index * 13}%` }}
+                    />
                   </div>
                 </div>
               ))}
@@ -367,20 +391,28 @@ export function AudienceWorkflowDemo({ audience, tone = "light" }: { audience: A
               ["Files + memory", "Keep context attached"],
               ["Audit trail", "Govern work without drag"],
             ].map(([label, text]) => (
-              <div key={label} className={cx("rounded-md border p-3", p.panelSubtle)}>
+              <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
                 <p className="text-xs font-medium">{label}</p>
-                <p className={cx("mt-1 text-[11px] leading-4", p.muted)}>{text}</p>
+                <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">{text}</p>
               </div>
             ))}
           </div>
         </div>
-        <aside className={cx("border-t p-4 md:border-l md:border-t-0", p.sidebar)}>
+        <aside className="border-t border-[var(--border)] bg-[var(--sidebar-surface)] p-4 md:border-l md:border-t-0">
           <p className="text-xs font-medium">Workspace views</p>
           <div className="mt-3 space-y-2">
             {data.side.map((item, index) => (
-              <div key={item} className={cx("rounded-md border p-3 text-xs", index === 1 ? "border-blue-500/65" : p.panel)}>
+              <div
+                key={item}
+                className={cx(
+                  "rounded-lg border p-3 text-xs",
+                  index === 1
+                    ? "border-[color:color-mix(in_srgb,var(--foreground)_25%,transparent)] bg-[var(--surface-subtle)]"
+                    : "border-[var(--border)] bg-[var(--surface-elevated)]",
+                )}
+              >
                 <p className="font-medium">{item}</p>
-                <p className={cx("mt-1 text-[11px] leading-4", p.muted)}>
+                <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
                   {index === 1 ? "Selected view" : "Configured"}
                 </p>
               </div>
@@ -390,6 +422,11 @@ export function AudienceWorkflowDemo({ audience, tone = "light" }: { audience: A
       </div>
     </div>
   );
+
+  if (tone) {
+    return <div data-theme={tone}>{inner}</div>;
+  }
+  return inner;
 }
 
 export function PricingControlPreview({ amount = "$24" }: { amount?: string }) {
