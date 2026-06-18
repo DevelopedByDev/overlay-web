@@ -44,6 +44,11 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
         body: "Schedule research, browser tasks, data extraction, and follow-up work so outputs land back in the project without manual orchestration.",
       },
       {
+        meta: "Execution",
+        title: "From insight to action in one thread.",
+        body: "Turn research and analysis into deliverables without tab-switching. Draft reports, generate assets, run browser tasks, and ship outputs from the same workspace where the thinking happened.",
+      },
+      {
         meta: "Governance",
         title: "Control what enters your workflow.",
         body: "Bring institutional knowledge into the same workspace where teams ask questions and run work. Audit trails, access controls, and on-prem deployment keep data inside your perimeter.",
@@ -59,7 +64,9 @@ export const AUDIENCE_PAGE_CONTENT: Record<AudiencePageKey, AudiencePageContent>
     ],
     proofItems: [
       "Model-agnostic workflow design eliminates lock-in to any single AI lab.",
+      "Bring your own models and keys — route work to OpenAI, Anthropic, Google, or self-hosted endpoints.",
       "Useful for customer support, market research, internal operations, and browser-heavy execution.",
+      "Memory and files compound across projects so institutional knowledge stays inside the workspace.",
       "Open-source codebase for teams that need to inspect, extend, or self-host.",
       "Cost transparency: pay for platform access and actual AI usage, not per-seat subscriptions.",
     ],

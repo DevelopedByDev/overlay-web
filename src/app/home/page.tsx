@@ -32,7 +32,7 @@ import {
   marketingHeadingLg,
   marketingIconChip,
   marketingSerifStyle,
-} from "@/features/landing/lib/landingPageStyles";
+} from "@/features/marketing/lib/marketingLayout";
 import { MARKETING_GITHUB_URL, MARKETING_SALES_URL, getMarketingAppHref } from "@/shared/marketing/marketing";
 
 const WORKFLOWS = [
