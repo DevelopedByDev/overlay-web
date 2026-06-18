@@ -268,13 +268,13 @@ function resolveDeploymentEnvironment(env: EnvSource): OverlayDeploymentEnvironm
   const explicit = readEnv(env, 'OVERLAY_DEPLOYMENT_ENV')
   if (isDeploymentEnvironment(explicit)) return explicit
 
-  const appUrl = resolveAppBaseUrl(env)
-  if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
-
   const vercelEnv = readEnv(env, 'VERCEL_ENV')
   if (vercelEnv === 'production') return 'production'
   if (vercelEnv === 'preview') return 'preview'
   if (vercelEnv === 'development') return 'development'
+
+  const appUrl = resolveAppBaseUrl(env)
+  if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
 
   const nodeEnv = readEnv(env, 'NODE_ENV')
   if (nodeEnv === 'test') return 'test'

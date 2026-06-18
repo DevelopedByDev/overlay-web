@@ -152,6 +152,38 @@ test('production env ignores dev WorkOS fallback variables', async () => {
   assert.equal(config.auth.workos.devApiKey, undefined)
 })
 
+test('Vercel production keeps production env precedence even with Vercel app URLs', async () => {
+  const config = await load({
+    env: {
+      VERCEL_ENV: 'production',
+      VERCEL_URL: 'overlay-landing-git-main-example.vercel.app',
+      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+      NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
+      DEV_NEXT_PUBLIC_CONVEX_URL: 'https://different-caiman-77.convex.cloud',
+      WORKOS_CLIENT_ID: 'client_prod',
+      WORKOS_API_KEY: 'workos_prod_secret',
+      DEV_WORKOS_CLIENT_ID: 'client_dev_should_be_ignored',
+      DEV_WORKOS_API_KEY: 'workos_dev_secret_should_be_ignored',
+      STRIPE_SECRET_KEY: 'sk_live_prod',
+      DEV_STRIPE_SECRET_KEY: 'sk_test_dev',
+      STRIPE_PAID_UNIT_PRICE_ID: 'price_paid_prod',
+      DEV_STRIPE_PAID_UNIT_PRICE_ID: 'price_paid_dev',
+      STRIPE_TOPUP_UNIT_PRICE_ID: 'price_topup_prod',
+      DEV_STRIPE_TOPUP_UNIT_PRICE_ID: 'price_topup_dev',
+      INTERNAL_API_SECRET: 'internal_prod',
+      INTERNAL_SERVICE_AUTH_SECRET: 'service_prod',
+      API_KEY_HASH_SECRET: 'api_key_hash_prod',
+    },
+  })
+
+  assert.equal(config.app.deploymentEnvironment, 'production')
+  assert.equal(config.billing.stripe.secretKey, 'sk_live_prod')
+  assert.equal(config.billing.stripe.paidUnitPriceId, 'price_paid_prod')
+  assert.equal(config.billing.stripe.topupUnitPriceId, 'price_topup_prod')
+  assert.equal(config.database.convexUrl, 'https://colorful-chickadee-419.convex.cloud')
+  assert.equal(config.auth.allowDevFallbacks, false)
+})
+
 test('loadOverlayConfig loads JSON override config', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'overlay-config-'))
   try {
