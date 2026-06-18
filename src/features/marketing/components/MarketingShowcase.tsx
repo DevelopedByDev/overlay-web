@@ -60,7 +60,12 @@ export function EditorialIntro({
       {label ? (
         <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">{label}</p>
       ) : null}
-      <h1 className="mt-4 text-balance text-5xl leading-[0.95] tracking-tight md:text-7xl">{title}</h1>
+      <h1
+        className="mt-4 text-balance text-5xl leading-[0.95] tracking-tight md:text-7xl"
+        style={{ fontFamily: "var(--font-serif)" }}
+      >
+        {title}
+      </h1>
       {body ? <p className="mt-6 max-w-2xl text-pretty text-base leading-7 text-[var(--muted)] md:text-lg">{body}</p> : null}
     </div>
   );
