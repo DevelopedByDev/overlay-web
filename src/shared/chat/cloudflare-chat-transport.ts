@@ -182,6 +182,17 @@ function shouldUseDirectStream(body: ChatBody): boolean {
   return record?.temporaryChat === true || record?.streamPersistenceMode === 'direct'
 }
 
+function shouldForceCloudflareRelay(body: ChatBody): boolean {
+  const record = body as Record<string, unknown> | undefined
+  return record?.streamPersistenceMode === 'cloudflare-relay'
+}
+
+export function resolvePersistentChatStreamMode(body: ChatBody): 'cloudflare-mirror' | 'cloudflare-relay' | 'direct' {
+  if (shouldUseDirectStream(body)) return 'direct'
+  if (shouldForceCloudflareRelay(body)) return 'cloudflare-relay'
+  return 'cloudflare-mirror'
+}
+
 export function shouldBypassChatStreamRelay(body: ChatBody): boolean {
   const record = body as Record<string, unknown> | undefined
   const conversationId =
@@ -193,7 +204,7 @@ export function shouldBypassChatStreamRelay(body: ChatBody): boolean {
 
 function logStreamCompletion(
   stream: ReadableStream<UIMessageChunk>,
-  path: 'cloudflare' | 'convex-fallback' | 'direct',
+  path: 'cloudflare' | 'cloudflare-mirror' | 'convex-fallback' | 'direct',
   body: ChatBody,
 ): ReadableStream<UIMessageChunk> {
   const withTtft = isTtftClientDebugEnabled()
@@ -295,7 +306,8 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   async sendMessages(
     options: Parameters<ChatTransport<UI_MESSAGE>['sendMessages']>[0],
   ): Promise<ReadableStream<UIMessageChunk>> {
-    if (shouldUseDirectStream(options.body)) {
+    const streamMode = resolvePersistentChatStreamMode(options.body)
+    if (streamMode === 'direct') {
       console.info('[chat-stream] path=direct start', streamLogFields(options.body))
       const body = {
         ...(options.body ?? {}),
@@ -305,17 +317,14 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
       return logStreamCompletion(stream, 'direct', body)
     }
 
-    // The relay authorizes streams against a persisted conversation ID. A new
-    // chat only has a client ID until /act creates it, so send that first turn
-    // through the Convex-persisted route instead of intentionally triggering a
-    // relay 400 and treating it as an exceptional fallback.
-    if (shouldBypassChatStreamRelay(options.body)) {
-      console.info('[chat-stream] path=convex-fallback start', {
-        ...streamLogFields(options.body),
-        reason: 'pending-conversation',
-      })
-      const stream = await this.fallbackTransport.sendMessages(options)
-      return logStreamCompletion(stream, 'convex-fallback', options.body)
+    if (streamMode === 'cloudflare-mirror') {
+      const body = {
+        ...(options.body ?? {}),
+        streamPersistenceMode: 'cloudflare-mirror',
+      }
+      console.info('[chat-stream] path=cloudflare-mirror start', streamLogFields(body))
+      const stream = await this.fallbackTransport.sendMessages({ ...options, body })
+      return logStreamCompletion(stream, 'cloudflare-mirror', body)
     }
 
     console.info('[chat-stream] path=cloudflare start', streamLogFields(options.body))

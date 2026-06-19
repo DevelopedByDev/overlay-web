@@ -36,6 +36,14 @@ type DurableObjectInput = {
   diagnostics: StreamDiagnostics
 }
 
+type DurableObjectIngestInput = {
+  diagnostics: StreamDiagnostics
+  messageId: string | null
+  metadata: StreamMetadata
+  requestId: string
+  streamId: string
+}
+
 function buildActStreamIdempotencyKey(turnId: string, slotIndex: number): string {
   return `act:${turnId.trim()}:${Math.max(0, Math.floor(slotIndex))}`
 }
@@ -64,6 +72,18 @@ type FrameRow = {
 const STREAM_PATH_PREFIX = '/api/chat-stream/v1/streams'
 const STREAM_TTL_MS = 60 * 60 * 1000
 const encoder = new TextEncoder()
+
+const CHAT_STREAM_RELAY_HEADER = 'x-overlay-chat-stream-relay'
+const CHAT_STREAM_RELAY_SECRET_HEADER = 'x-overlay-chat-stream-secret'
+const CHAT_STREAM_RELAY_VALUE = 'cloudflare'
+const STREAM_ID_HEADER = 'x-overlay-stream-id'
+const USER_ID_HEADER = 'x-overlay-auth-user-id'
+const CONVERSATION_ID_HEADER = 'x-overlay-conversation-id'
+const TURN_ID_HEADER = 'x-overlay-turn-id'
+const VARIANT_INDEX_HEADER = 'x-overlay-variant-index'
+const MESSAGE_ID_HEADER = 'x-overlay-generating-message-id'
+const MODEL_ID_HEADER = 'x-overlay-model-id'
+const MODE_HEADER = 'x-overlay-mode'
 
 function json(data: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(data), {
@@ -124,6 +144,37 @@ function normalizeVariantIndex(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+function headerValue(request: Request, name: string, maxLength = 512): string {
+  return request.headers.get(name)?.trim().slice(0, maxLength) ?? ''
+}
+
+async function sha256Bytes(value: string): Promise<ArrayBuffer> {
+  return crypto.subtle.digest('SHA-256', encoder.encode(value))
+}
+
+async function timingSafeStringEqual(left: string, right: string): Promise<boolean> {
+  const [leftHash, rightHash] = await Promise.all([
+    sha256Bytes(left),
+    sha256Bytes(right),
+  ])
+  const leftBytes = new Uint8Array(leftHash)
+  const rightBytes = new Uint8Array(rightHash)
+  let diff = leftBytes.length ^ rightBytes.length
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    diff |= leftBytes[index] ^ (rightBytes[index] ?? 0)
+  }
+  return diff === 0
+}
+
+async function isVerifiedRelaySecretRequest(request: Request, env: Env): Promise<boolean> {
+  const expected = env.CHAT_STREAM_RELAY_SECRET?.trim()
+  if (!expected) return false
+  if (headerValue(request, CHAT_STREAM_RELAY_HEADER) !== CHAT_STREAM_RELAY_VALUE) return false
+  const provided = headerValue(request, CHAT_STREAM_RELAY_SECRET_HEADER, 4096)
+  if (!provided) return false
+  return timingSafeStringEqual(provided, expected)
+}
+
 function parseStreamMetadata(body: Record<string, unknown>): Omit<StreamMetadata, 'userId'> | null {
   const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
   const turnId = typeof body.turnId === 'string' ? body.turnId.trim() : ''
@@ -139,6 +190,30 @@ function parseStreamDiagnostics(body: Record<string, unknown>): StreamDiagnostic
   return {
     modelId: typeof body.modelId === 'string' ? body.modelId.slice(0, 160) : null,
     mode: typeof body.mode === 'string' ? body.mode.slice(0, 64) : null,
+  }
+}
+
+function parseIngestInput(request: Request, streamId: string, requestId: string): DurableObjectIngestInput | null {
+  const userId = headerValue(request, USER_ID_HEADER)
+  const conversationId = headerValue(request, CONVERSATION_ID_HEADER)
+  const turnId = headerValue(request, TURN_ID_HEADER)
+  if (!userId || !conversationId || !turnId) return null
+  const rawVariantIndex = Number(headerValue(request, VARIANT_INDEX_HEADER, 32))
+  const variantIndex = Number.isFinite(rawVariantIndex) ? rawVariantIndex : 0
+  return {
+    requestId,
+    streamId,
+    messageId: headerValue(request, MESSAGE_ID_HEADER) || null,
+    metadata: {
+      userId,
+      conversationId,
+      turnId,
+      variantIndex: normalizeVariantIndex(variantIndex),
+    },
+    diagnostics: {
+      modelId: headerValue(request, MODEL_ID_HEADER, 160) || null,
+      mode: headerValue(request, MODE_HEADER, 64) || null,
+    },
   }
 }
 
@@ -216,6 +291,114 @@ async function authorizeStream(
     turnId: metadata.turnId,
     variantIndex: metadata.variantIndex,
   }
+}
+
+async function routeIngestToStreamObject(request: Request, env: Env): Promise<Response> {
+  const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
+  const envError = requireEnv(env)
+  if (envError) {
+    console.error('[chat-stream-worker] configuration error', { requestId, error: envError })
+    return relayError({
+      code: 'relay_configuration_error',
+      error: envError,
+      fallbackSafe: true,
+      phase: 'configuration',
+      requestId,
+      status: 503,
+    })
+  }
+  if (!isAllowedOrigin(request, env)) {
+    console.warn('[chat-stream-worker] origin rejected', {
+      requestId,
+      origin: request.headers.get('Origin'),
+    })
+    return relayError({
+      code: 'relay_invalid_origin',
+      error: 'Invalid chat stream origin',
+      fallbackSafe: true,
+      phase: 'origin',
+      requestId,
+      status: 403,
+    })
+  }
+  if (!await isVerifiedRelaySecretRequest(request, env)) {
+    console.warn('[chat-stream-worker] ingest authorization rejected', { requestId })
+    return relayError({
+      code: 'relay_ingest_unauthorized',
+      error: 'Chat stream ingest authorization failed',
+      fallbackSafe: false,
+      phase: 'authorization',
+      requestId,
+      status: 401,
+    })
+  }
+  if (!request.body) {
+    return relayError({
+      code: 'relay_ingest_body_required',
+      error: 'Chat stream ingest requires a stream body',
+      fallbackSafe: false,
+      phase: 'validation',
+      requestId,
+      status: 400,
+    })
+  }
+
+  const userId = headerValue(request, USER_ID_HEADER)
+  const conversationId = headerValue(request, CONVERSATION_ID_HEADER)
+  const turnId = headerValue(request, TURN_ID_HEADER)
+  const rawVariantIndex = Number(headerValue(request, VARIANT_INDEX_HEADER, 32))
+  const variantIndex = Number.isFinite(rawVariantIndex) ? rawVariantIndex : 0
+  if (!userId || !conversationId || !turnId) {
+    return relayError({
+      code: 'relay_ingest_metadata_required',
+      error: 'Chat stream ingest requires user, conversation, and turn metadata',
+      fallbackSafe: false,
+      phase: 'validation',
+      requestId,
+      status: 400,
+    })
+  }
+
+  const streamName = await sha256Hex(`${userId}:${conversationId}:${turnId}:${normalizeVariantIndex(variantIndex)}`)
+  const input = parseIngestInput(request, streamName, requestId)
+  if (!input) {
+    return relayError({
+      code: 'relay_ingest_metadata_invalid',
+      error: 'Chat stream ingest metadata is invalid',
+      fallbackSafe: false,
+      phase: 'validation',
+      requestId,
+      status: 400,
+    })
+  }
+
+  const stub = env.CHAT_STREAMS.getByName(streamName)
+  console.info('[chat-stream-worker] ingest routing request', {
+    requestId,
+    stream: streamName.slice(0, 12),
+    conversationId,
+    turnId,
+    variantIndex: input.metadata.variantIndex,
+    modelId: input.diagnostics.modelId,
+    mode: input.diagnostics.mode,
+  })
+  const response = await stub.fetch('https://chat-stream.internal/ingest', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'x-request-id': requestId,
+      [STREAM_ID_HEADER]: streamName,
+      [USER_ID_HEADER]: input.metadata.userId,
+      [CONVERSATION_ID_HEADER]: input.metadata.conversationId,
+      [TURN_ID_HEADER]: input.metadata.turnId,
+      [VARIANT_INDEX_HEADER]: String(input.metadata.variantIndex),
+      [MESSAGE_ID_HEADER]: input.messageId ?? '',
+      [MODEL_ID_HEADER]: input.diagnostics.modelId ?? '',
+      [MODE_HEADER]: input.diagnostics.mode ?? '',
+    },
+    body: request.body,
+  })
+  return withRequestId(response, requestId)
 }
 
 async function routeToStreamObject(
@@ -343,6 +526,9 @@ const worker: ExportedHandler<Env> = {
       return json({ error: 'Method not allowed' }, { status: 405 })
     }
 
+    if (url.pathname === `${STREAM_PATH_PREFIX}/ingest`) {
+      return routeIngestToStreamObject(request, env)
+    }
     if (url.pathname === `${STREAM_PATH_PREFIX}/start`) {
       return routeToStreamObject(request, env, 'start')
     }
@@ -420,8 +606,9 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const input = await request.json() as DurableObjectInput
     const url = new URL(request.url)
+    if (url.pathname === '/ingest') return this.handleIngest(request)
+    const input = await request.json() as DurableObjectInput
     if (url.pathname === '/start') return this.handleStart(input)
     if (url.pathname === '/resume') return this.handleResume(input)
     if (url.pathname === '/stop') return this.handleStop(input)
@@ -433,18 +620,19 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     return rows[0] ?? null
   }
 
-  private createSession(input: DurableObjectInput): SessionRow {
+  private createSession(input: { messageId?: string | null; metadata: StreamMetadata; streamId: string }): SessionRow {
     const now = Date.now()
     this.ctx.storage.sql.exec(
       `INSERT INTO sessions (
-        stream_id, user_id, conversation_id, turn_id, variant_index, status,
+        stream_id, user_id, conversation_id, turn_id, variant_index, status, message_id,
         partial_text, frame_count, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', '', 0, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, 'active', ?, '', 0, ?, ?)`,
       input.streamId,
       input.metadata.userId,
       input.metadata.conversationId,
       input.metadata.turnId,
       input.metadata.variantIndex,
+      input.messageId ?? null,
       now,
       now,
     )
@@ -460,6 +648,24 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     )
   }
 
+  private verifyIngestOwner(input: DurableObjectIngestInput, session: SessionRow): boolean {
+    return (
+      input.metadata.userId === session.user_id &&
+      input.metadata.conversationId === session.conversation_id &&
+      input.metadata.turnId === session.turn_id &&
+      input.metadata.variantIndex === session.variant_index
+    )
+  }
+
+  private updateMessageId(messageId: string | null): void {
+    if (!messageId) return
+    this.ctx.storage.sql.exec(
+      'UPDATE sessions SET message_id = COALESCE(message_id, ?), updated_at = ?',
+      messageId,
+      Date.now(),
+    )
+  }
+
   private sseHeaders(): Headers {
     const headers = new Headers({
       'Content-Type': 'text/event-stream',
@@ -471,6 +677,118 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       headers.set('Set-Cookie', this.upstreamSetCookie)
     }
     return headers
+  }
+
+  private async handleIngest(request: Request): Promise<Response> {
+    const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
+    const streamId = headerValue(request, STREAM_ID_HEADER)
+    if (!streamId) {
+      return relayError({
+        code: 'relay_ingest_stream_required',
+        error: 'Chat stream ingest requires a stream id',
+        fallbackSafe: false,
+        phase: 'validation',
+        requestId,
+        status: 400,
+      })
+    }
+    const input = parseIngestInput(request, streamId, requestId)
+    if (!input) {
+      return relayError({
+        code: 'relay_ingest_metadata_invalid',
+        error: 'Chat stream ingest metadata is invalid',
+        fallbackSafe: false,
+        phase: 'validation',
+        requestId,
+        status: 400,
+      })
+    }
+    if (!request.body) {
+      return relayError({
+        code: 'relay_ingest_body_required',
+        error: 'Chat stream ingest requires a stream body',
+        fallbackSafe: false,
+        phase: 'validation',
+        requestId,
+        status: 400,
+      })
+    }
+
+    let session = this.getSession()
+    const created = !session
+    if (!session) {
+      session = this.createSession(input)
+    }
+    if (!this.verifyIngestOwner(input, session)) {
+      console.warn('[chat-stream-worker] ingest owner mismatch', {
+        requestId,
+        stream: session.stream_id.slice(0, 12),
+      })
+      return relayError({
+        code: 'relay_stream_owner_mismatch',
+        error: 'Chat stream owner mismatch',
+        fallbackSafe: false,
+        phase: 'routing',
+        requestId,
+        status: 403,
+      })
+    }
+    if (!created && session.status !== 'active') {
+      return json({
+        ok: true,
+        status: session.status,
+        frameCount: session.frame_count,
+      })
+    }
+    if (!created && this.upstreamRunning) {
+      return relayError({
+        code: 'relay_ingest_already_running',
+        error: 'Chat stream ingest is already running',
+        fallbackSafe: false,
+        phase: 'routing',
+        requestId,
+        status: 409,
+      })
+    }
+
+    this.updateMessageId(input.messageId)
+    this.upstreamRunning = true
+    console.info('[chat-stream-worker] ingest connected', {
+      requestId,
+      stream: input.streamId.slice(0, 12),
+      created,
+      modelId: input.diagnostics.modelId,
+      messageIdPresent: Boolean(input.messageId),
+    })
+    try {
+      await this.drainMirroredStream(request.body, input)
+      return json({
+        ok: true,
+        status: 'completed',
+        frameCount: this.getSession()?.frame_count ?? null,
+      })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.markError(reason)
+      console.warn('[chat-stream-worker] ingest failed', {
+        requestId,
+        stream: input.streamId.slice(0, 12),
+        modelId: input.diagnostics.modelId,
+        reason,
+      })
+      return relayError({
+        code: 'relay_ingest_failed',
+        error: reason,
+        fallbackSafe: false,
+        phase: 'upstream',
+        requestId,
+        status: 502,
+      })
+    } finally {
+      this.upstreamRunning = false
+      this.upstreamAbortController = null
+      this.closeClients()
+    }
   }
 
   private async handleStart(input: DurableObjectInput): Promise<Response> {
@@ -650,6 +968,34 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       modelId: input.diagnostics.modelId,
     })
     this.ctx.waitUntil(this.drainUpstream(response.body, input))
+  }
+
+  private async drainMirroredStream(
+    body: ReadableStream<Uint8Array>,
+    input: DurableObjectIngestInput,
+  ): Promise<void> {
+    const reader = body.getReader()
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        if (value && value.byteLength > 0) {
+          this.persistAndBroadcast(value)
+        }
+      }
+      if (!this.stopped) {
+        this.markCompleted()
+        const session = this.getSession()
+        console.info('[chat-stream-worker] ingest completed', {
+          requestId: input.requestId,
+          stream: input.streamId.slice(0, 12),
+          frameCount: session?.frame_count ?? null,
+          modelId: input.diagnostics.modelId,
+        })
+      }
+    } finally {
+      reader.releaseLock()
+    }
   }
 
   private async drainUpstream(

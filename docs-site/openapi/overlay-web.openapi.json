@@ -1631,8 +1631,9 @@
                   "streamPersistenceMode": {
                     "type": "string",
                     "enum": [
-                      "convex-deltas",
+                      "cloudflare-mirror",
                       "cloudflare-relay",
+                      "convex-deltas",
                       "direct"
                     ]
                   },
@@ -1837,8 +1838,9 @@
                   "streamPersistenceMode": {
                     "type": "string",
                     "enum": [
-                      "convex-deltas",
+                      "cloudflare-mirror",
                       "cloudflare-relay",
+                      "convex-deltas",
                       "direct"
                     ]
                   },

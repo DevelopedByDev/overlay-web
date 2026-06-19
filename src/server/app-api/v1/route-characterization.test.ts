@@ -571,5 +571,7 @@ test('conversations act swallows user-message persistence failure before later f
 
   assert.equal(sawUserMessagePersist, true)
   assert.equal(response.status, 500)
-  assert.deepEqual(await readJson(response), { error: 'history unavailable' })
+  const body = await readJson(response) as { error?: unknown; requestId?: unknown }
+  assert.equal(body.error, 'history unavailable')
+  assert.equal(typeof body.requestId, 'string')
 })

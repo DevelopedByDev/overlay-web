@@ -29,6 +29,16 @@ test('resolveActStreamPersistence preserves relay verification behavior', () => 
     verifiedCloudflareRelay: false,
   }), {
     mode: 'direct',
+    useCloudflareStreamMirror: false,
+    useCloudflareStreamRelay: false,
+    ignoredUnverifiedRelay: false,
+  })
+  assert.deepEqual(resolveActStreamPersistence({
+    requestedMode: 'cloudflare-mirror',
+    verifiedCloudflareRelay: false,
+  }), {
+    mode: 'cloudflare-mirror',
+    useCloudflareStreamMirror: true,
     useCloudflareStreamRelay: false,
     ignoredUnverifiedRelay: false,
   })
@@ -37,6 +47,7 @@ test('resolveActStreamPersistence preserves relay verification behavior', () => 
     verifiedCloudflareRelay: false,
   }), {
     mode: 'convex-deltas',
+    useCloudflareStreamMirror: false,
     useCloudflareStreamRelay: false,
     ignoredUnverifiedRelay: true,
   })
@@ -45,6 +56,7 @@ test('resolveActStreamPersistence preserves relay verification behavior', () => 
     verifiedCloudflareRelay: true,
   }), {
     mode: 'cloudflare-relay',
+    useCloudflareStreamMirror: false,
     useCloudflareStreamRelay: true,
     ignoredUnverifiedRelay: false,
   })
@@ -120,12 +132,12 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
   const events: string[] = []
   const result = await runActModelAttempts<string>({
     attemptModelIds: [
-      'moonshotai/kimi-k2.6',
-      'gemini-3-flash-preview',
-      'google/gemma-4-26b-a4b-it',
+      'openrouter/moonshotai/kimi-k2.6:free',
+      'openrouter/z-ai/glm-4.5-air:free',
+      'stepfun-ai/step-3.5-flash',
     ],
     reserveBudgetForAttempt: async (attemptModelId) => {
-      if (attemptModelId === 'google/gemma-4-26b-a4b-it') return { ok: true }
+      if (attemptModelId === 'stepfun-ai/step-3.5-flash') return { ok: true }
       return {
         ok: false,
         reason: 'budget',
@@ -144,8 +156,8 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
 
   assert.equal(result, 'ok')
   assert.deepEqual(events, [
-    'fallback:gemini-3-flash-preview->google/gemma-4-26b-a4b-it:moonshotai/kimi-k2.6,gemini-3-flash-preview',
-    'run:google/gemma-4-26b-a4b-it:Kimi K2.6 and Gemini 3 Flash exceeded remaining budget, switching to Gemma 4 26B A4B.',
+    'fallback:openrouter/z-ai/glm-4.5-air:free->stepfun-ai/step-3.5-flash:openrouter/moonshotai/kimi-k2.6:free,openrouter/z-ai/glm-4.5-air:free',
+    'run:stepfun-ai/step-3.5-flash:Free: Kimi K2.6 and Free Router exceeded remaining budget, switching to Free: Step 3.5 Flash.',
   ])
 })
 

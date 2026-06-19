@@ -3,18 +3,19 @@ import test from 'node:test'
 import {
   ChatTransportHttpError,
   createChatDiagnosticFetch,
+  resolvePersistentChatStreamMode,
   shouldBypassChatStreamRelay,
   shouldFallbackAfterRelayError,
 } from './cloudflare-chat-transport'
 
-test('bypasses the relay while a first chat only has a client ID', () => {
+test('legacy relay predicate bypasses while a first chat only has a client ID', () => {
   assert.equal(shouldBypassChatStreamRelay({
     conversationClientId: 'client-123',
     turnId: 'turn-123',
   }), true)
 })
 
-test('uses the relay once the conversation has a persisted ID', () => {
+test('legacy relay predicate allows relay once the conversation has a persisted ID', () => {
   assert.equal(shouldBypassChatStreamRelay({
     conversationId: 'conversation-123',
     conversationClientId: 'client-123',
@@ -22,11 +23,31 @@ test('uses the relay once the conversation has a persisted ID', () => {
   }), false)
 })
 
-test('does not bypass ordinary persisted turns', () => {
+test('legacy relay predicate does not bypass ordinary persisted turns', () => {
   assert.equal(shouldBypassChatStreamRelay({
     conversationId: 'conversation-123',
     turnId: 'turn-123',
   }), false)
+})
+
+test('defaults persistent sends to direct cloudflare mirror mode', () => {
+  assert.equal(resolvePersistentChatStreamMode({
+    conversationId: 'conversation-123',
+    turnId: 'turn-123',
+  }), 'cloudflare-mirror')
+  assert.equal(resolvePersistentChatStreamMode({
+    conversationClientId: 'client-123',
+    turnId: 'turn-123',
+  }), 'cloudflare-mirror')
+  assert.equal(resolvePersistentChatStreamMode({
+    temporaryChat: true,
+    turnId: 'turn-123',
+  }), 'direct')
+  assert.equal(resolvePersistentChatStreamMode({
+    conversationId: 'conversation-123',
+    streamPersistenceMode: 'cloudflare-relay',
+    turnId: 'turn-123',
+  }), 'cloudflare-relay')
 })
 
 test('only falls back when the relay explicitly says the upstream was not started', () => {

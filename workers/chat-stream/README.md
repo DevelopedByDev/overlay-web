@@ -1,31 +1,34 @@
 # Overlay Chat Stream Worker
 
-Cloudflare Durable Object relay for persistent chat streaming.
+Cloudflare Durable Object replay log for persistent chat streaming.
 
 ## What the relay does
 
-The relay is not an LLM provider and does not choose or call models itself. For an
-existing conversation it:
+The Worker is not an LLM provider and does not choose or call models itself. In
+the default web flow, the browser calls `/api/v1/conversations/act` on the Next
+app directly for low time-to-first-token. Next tees the same UI-message stream
+to this Worker in the background. For a turn it:
 
-1. Authorizes the signed-in user against the Next app.
-2. Forwards the `/api/v1/conversations/act` request to Next/Vercel.
-3. Stores streamed SSE frames in a per-turn Durable Object.
-4. Replays those frames when a browser reconnects or reloads.
-5. Preserves partial output so stopping or disconnecting does not lose the turn.
+1. Accepts authenticated `/ingest` streams from the Next app.
+2. Stores streamed SSE frames in a per-turn Durable Object.
+3. Replays those frames when a browser reconnects or reloads.
+4. Preserves partial output so stopping or disconnecting does not lose the turn.
+
+The legacy `/start` endpoint still supports routing `/act` through the Durable
+Object for compatibility and debugging, but normal persistent turns should use
+the passive mirror path.
 
 The Next app still performs entitlement checks, model routing, provider calls,
 tool execution, usage accounting, and durable conversation persistence.
 
-## Why the first turn bypasses the relay
+## Why direct streaming is the default
 
-A new chat initially has only a browser-generated `conversationClientId`. The
-persisted `conversationId` is created inside `/api/v1/conversations/act`. The
-relay requires that persisted ID before it can authorize access and derive the
-stable Durable Object key for `(user, conversation, turn, variant)`.
-
-The first turn therefore calls `/act` directly using Convex-delta persistence.
-Once `/act` creates the conversation, subsequent turns use the Cloudflare relay
-and gain resumable streaming.
+Putting Cloudflare before `/act` adds origin validation, stream auth, Durable
+Object routing, and an upstream `/act` fetch before the browser can receive the
+first token. Direct streaming removes that setup from the critical path. The
+Next app derives the persisted conversation id before it mirrors the stream, so
+even first turns can be written to the replay log after `/act` creates the
+conversation.
 
 ## Debug correlation
 

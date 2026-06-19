@@ -31,6 +31,10 @@ import {
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
+import {
+  canMirrorToCloudflareStream,
+  mirrorChatStreamToCloudflare,
+} from '@/server/chat/cloudflare-stream-mirror'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
@@ -144,12 +148,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    const userId = auth.userId
 	    currentUserId = userId
     const accessToken = auth.accessToken || undefined
-    const streamPersistence = resolveActStreamPersistence({
-      requestedMode: streamPersistenceMode,
-      verifiedCloudflareRelay: isVerifiedChatStreamRelayRequest(request),
-    })
-    const useCloudflareStreamRelay = streamPersistence.useCloudflareStreamRelay
-    const resolvedStreamPersistenceMode = streamPersistence.mode
+	    const streamPersistence = resolveActStreamPersistence({
+	      requestedMode: streamPersistenceMode,
+	      verifiedCloudflareRelay: isVerifiedChatStreamRelayRequest(request),
+	    })
+	    const useCloudflareStreamRelay = streamPersistence.useCloudflareStreamRelay
+	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
+	    const resolvedStreamPersistenceMode = streamPersistence.mode
     if (streamPersistence.ignoredUnverifiedRelay) {
       logger.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
         requestId,
@@ -565,13 +570,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
     responseHeaders.set('x-request-id', requestId)
-    if (useCloudflareStreamRelay) {
+    if (useCloudflareStreamRelay || useCloudflareStreamMirror) {
       responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
       responseHeaders.set('x-overlay-auth-user-id', userId)
       responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
     }
     if (responseBody) {
-      if (resolvedStreamPersistenceMode === 'convex-deltas') {
+      if (
+        resolvedStreamPersistenceMode === 'convex-deltas' ||
+        resolvedStreamPersistenceMode === 'cloudflare-mirror'
+      ) {
         responseBody = responseBody.pipeThrough(
           actGeneratingMessageService.createPersistenceTransform({
             messageId: generatingMessageId,
@@ -602,6 +610,46 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
           }
         })
+      }
+      if (useCloudflareStreamMirror) {
+        if (cid && canMirrorToCloudflareStream(request)) {
+          const [clientBody, mirrorBody] = responseBody.tee()
+          responseBody = clientBody
+          after(async () => {
+            try {
+              await mirrorChatStreamToCloudflare({
+                request,
+                stream: mirrorBody,
+                metadata: {
+                  conversationId: cid,
+                  messageId: generatingMessageId,
+                  mode,
+                  modelId: attemptModelId,
+                  requestId,
+                  turnId: tid,
+                  userId,
+                  variantIndex: multiModelSlotIndex,
+                },
+              })
+            } catch (err) {
+              logger.warn('[chat-stream] cloudflare mirror failed', {
+                requestId,
+                conversationId: cid,
+                turnId: tid,
+                variantIndex: multiModelSlotIndex,
+                reason: summarizeErrorForLog(err),
+              })
+            }
+          })
+        } else {
+          logger.warn('[chat-stream] cloudflare mirror unavailable', {
+            requestId,
+            conversationId: cid,
+            hasConversationId: Boolean(cid),
+            turnId: tid,
+            variantIndex: multiModelSlotIndex,
+          })
+        }
       }
     }
     if (_ttftDebug && responseBody) {
