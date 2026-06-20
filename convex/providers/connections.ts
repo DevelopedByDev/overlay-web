@@ -23,6 +23,8 @@ const connectionRowValidator = v.object({
   endpoint: v.string(),
   displayName: v.string(),
   enabledModelIds: v.array(v.string()),
+  discoveredModelsJson: v.optional(v.string()),
+  discoveredAt: v.optional(v.number()),
   status: connectionStatusValidator,
   lastError: v.optional(v.string()),
   lastTestedAt: v.optional(v.number()),
@@ -33,8 +35,9 @@ const connectionRowValidator = v.object({
 })
 
 /**
- * Strips secret fields (vaultKeyName, vaultObjectId, discoveredModelsJson) from a
- * connection row before returning it to the client.
+ * Strips secret fields (vaultKeyName, vaultObjectId) from a connection row
+ * before returning it to the client. discoveredModelsJson is NOT a secret —
+ * it's model metadata needed by the client to render model names.
  */
 function stripSecrets(row: Doc<'userProviderConnections'>) {
   return {
@@ -43,6 +46,8 @@ function stripSecrets(row: Doc<'userProviderConnections'>) {
     endpoint: row.endpoint,
     displayName: row.displayName,
     enabledModelIds: row.enabledModelIds,
+    discoveredModelsJson: row.discoveredModelsJson,
+    discoveredAt: row.discoveredAt,
     status: row.status,
     lastError: row.lastError,
     lastTestedAt: row.lastTestedAt,

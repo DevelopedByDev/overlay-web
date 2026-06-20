@@ -98,6 +98,7 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useByokModels } from '@/components/providers/useByokModels'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
@@ -249,6 +250,7 @@ export default function ChatExperience({
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
   } = useGatewayModelCatalog()
+  useByokModels()
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser, isLoading: authLoading } = useAuth()

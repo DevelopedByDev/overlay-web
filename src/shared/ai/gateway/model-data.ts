@@ -9,6 +9,10 @@ import {
   gatewayCatalogModelToChatModel,
   type GatewayCatalogModel,
 } from '@/shared/ai/gateway/gateway-catalog'
+import {
+  byokConnectionsToChatModels,
+  type ByokConnectionRow,
+} from '@/shared/ai/gateway/byok-model-conversion'
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
@@ -62,7 +66,41 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
     gatewayCatalogModels.set(model.id, chatModel)
     registered.push(chatModel)
   }
-  AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...registered, ...SPECIAL_CHAT_MODELS)
+  rebuildAvailableModels(registered)
+}
+
+// ─── BYOK model registry ───────────────────────────────────────────────────
+
+const byokModels = new Map<string, ChatModel>()
+
+/**
+ * Registers BYOK (bring-your-own-key) models from the user's provider
+ * connections. Called from the `useByokModels()` client hook after fetching
+ * connections from the BFF. Rebuilds {@link AVAILABLE_MODELS} to include
+ * both gateway catalog models and BYOK models.
+ */
+export function registerByokModels(connections: readonly ByokConnectionRow[]): void {
+  byokModels.clear()
+  const models = byokConnectionsToChatModels(connections)
+  for (const model of models) {
+    byokModels.set(model.id, model)
+  }
+  rebuildAvailableModels(getGatewayRegisteredModels())
+}
+
+/** Returns the current list of registered gateway catalog models. */
+function getGatewayRegisteredModels(): ChatModel[] {
+  return Array.from(gatewayCatalogModels.values())
+}
+
+/**
+ * Rebuilds the {@link AVAILABLE_MODELS} array from gateway catalog models,
+ * BYOK models, and special chat models. BYOK models are appended after
+ * gateway models, sorted by provider then name.
+ */
+function rebuildAvailableModels(gatewayModels: ChatModel[]): void {
+  const byokList = Array.from(byokModels.values())
+  AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...gatewayModels, ...SPECIAL_CHAT_MODELS, ...byokList)
 }
 
 /**
@@ -134,7 +172,7 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
 
 export function getModel(id: string): ChatModel | undefined {
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
-  return AVAILABLE_MODELS.find((m) => m.id === resolved) ?? gatewayCatalogModels.get(resolved)
+  return AVAILABLE_MODELS.find((m) => m.id === resolved) ?? gatewayCatalogModels.get(resolved) ?? byokModels.get(resolved)
 }
 
 /** 1–5 segments for relative response latency (higher = faster). */
