@@ -46,7 +46,7 @@ import {
   getVideoModelsBySubMode,
 } from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
-import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+import { resolveDefaultChatModelId } from '@/shared/chat/default-chat-model'
 import {
   defaultChatToolRequestIds,
   defaultMemoryEnabled,
@@ -498,27 +498,26 @@ export default function ChatExperience({
     setSelectedModels,
   })
   const resolveAppDefaultChatModels = useCallback(() => {
-    return resolveDefaultChatModelSelection({
+    const actModelId = resolveDefaultChatModelId({
       defaultActModelId: settings.defaultActModelId,
-      defaultAskModelIds: settings.defaultAskModelIds,
       isFreeTier: billingEnabled ? isFreeTier : false,
       onlyAllowZdrModels: settings.onlyAllowZdrModels,
     })
+    return { actModelId, askModelIds: [actModelId] }
   }, [
     billingEnabled,
     isFreeTier,
     settings.defaultActModelId,
-    settings.defaultAskModelIds,
     settings.onlyAllowZdrModels,
   ])
   const applyDefaultChatModelsToView = useCallback(
     (ui: Partial<ConversationUiState>): ConversationUiState => {
-      const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+      const { actModelId } = resolveAppDefaultChatModels()
       return createConversationUiState({
         ...ui,
         selectedActModel: actModelId,
-        selectedModels: askModelIds,
-        askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
+        selectedModels: [actModelId],
+        askModelSelectionMode: 'single',
       })
     },
     [resolveAppDefaultChatModels],
@@ -2100,22 +2099,14 @@ export default function ChatExperience({
   }
 
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
-  const persistNewChatAskModels = useCallback((ids: string[]) => {
-    if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: ids })
-    void updateSettings({
-      defaultAskModelIds: normalized.askModelIds,
-      defaultActModelId: normalized.actModelId,
-    })
-  }, [isOnNewChatSurface, updateSettings])
+  const persistNewChatAskModels = useCallback((_ids: string[]) => {
+    void _ids
+    // Ask mode removed — multi-model selection is no longer persisted.
+  }, [])
   const persistNewChatActModel = useCallback((id: string) => {
     if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
-    void updateSettings({
-      defaultAskModelIds: normalized.askModelIds,
-      defaultActModelId: normalized.actModelId,
-    })
-  }, [isOnNewChatSurface, selectedModels, updateSettings])
+    void updateSettings({ defaultActModelId: id })
+  }, [isOnNewChatSurface, updateSettings])
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
@@ -2302,11 +2293,11 @@ export default function ChatExperience({
     setIsTemporaryChat(options.temporary)
     resetComposerToolIds(options.temporary)
     setActiveChatTitle(options.temporary ? 'Temporary chat' : null)
-    const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+    const { actModelId } = resolveAppDefaultChatModels()
     resetRuntimeState(emptyRuntimeRef.current, {
       selectedActModel: actModelId,
-      selectedModels: askModelIds,
-      askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
+      selectedModels: [actModelId],
+      askModelSelectionMode: 'single',
       activeChatTitle: options.temporary ? 'Temporary chat' : null,
       isFirstMessage: true,
     })

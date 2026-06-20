@@ -179,16 +179,13 @@ export default function SettingsPage() {
               />
               <DefaultChatModelSetting
                 defaultActModelId={settings.defaultActModelId}
-                defaultAskModelIds={settings.defaultAskModelIds}
                 isFreeTier={billingSettings?.planKind === 'free'}
                 onlyAllowZdrModels={settings.onlyAllowZdrModels}
                 enabledModelIds={settings.enabledChatModelIds}
+                modelOrder={settings.modelOrder}
                 disabled={busy || (capabilities.billing && !billingSettings)}
-                onSelect={(actModelId, askModelIds) => {
-                  void updateSettings({
-                    defaultActModelId: actModelId,
-                    defaultAskModelIds: askModelIds,
-                  })
+                onSelect={(actModelId) => {
+                  void updateSettings({ defaultActModelId: actModelId })
                 }}
               />
               {capabilities.billing ? (

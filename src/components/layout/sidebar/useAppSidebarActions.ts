@@ -55,7 +55,6 @@ export function useAppSidebarActions({
     }
     const models = resolveNewChatModelFields({
       defaultActModelId: settings.defaultActModelId,
-      defaultAskModelIds: settings.defaultAskModelIds,
       isFreeTier,
       onlyAllowZdrModels: settings.onlyAllowZdrModels,
     })
@@ -88,7 +87,6 @@ export function useAppSidebarActions({
     router,
     isFreeTier,
     settings.defaultActModelId,
-    settings.defaultAskModelIds,
     settings.onlyAllowZdrModels,
     user,
   ])

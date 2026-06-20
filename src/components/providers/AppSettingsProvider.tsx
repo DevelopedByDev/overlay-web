@@ -29,7 +29,6 @@ type AppSettingsContextValue = {
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
 const MAX_MODEL_ID_LENGTH = 160
-const MAX_ASK_MODEL_IDS = 4
 const MAX_ENABLED_MODEL_IDS = 400
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
 const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
@@ -66,24 +65,9 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   }
   if (candidate.autoContinue !== undefined && typeof candidate.autoContinue !== 'boolean') return false
   if (
-    candidate.defaultChatMode !== undefined &&
-    candidate.defaultChatMode !== 'ask' &&
-    candidate.defaultChatMode !== 'act'
-  ) {
-    return false
-  }
-  if (
     candidate.modelPreference !== undefined &&
     candidate.modelPreference !== 'same-for-each-chat' &&
     candidate.modelPreference !== 'different-for-each-chat'
-  ) {
-    return false
-  }
-  if (
-    candidate.defaultAskModelIds !== undefined &&
-    (!Array.isArray(candidate.defaultAskModelIds) ||
-      candidate.defaultAskModelIds.length > MAX_ASK_MODEL_IDS ||
-      !candidate.defaultAskModelIds.every(isSafeModelId))
   ) {
     return false
   }
@@ -141,9 +125,7 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.darkThemePreset === 'string' ||
     typeof candidate.chatStreamingMode === 'string' ||
     typeof candidate.autoContinue === 'boolean' ||
-    typeof candidate.defaultChatMode === 'string' ||
     typeof candidate.modelPreference === 'string' ||
-    Array.isArray(candidate.defaultAskModelIds) ||
     typeof candidate.defaultActModelId === 'string' ||
     typeof candidate.defaultImageModelId === 'string' ||
     typeof candidate.defaultVideoModelId === 'string' ||

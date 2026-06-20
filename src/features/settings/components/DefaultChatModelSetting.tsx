@@ -4,38 +4,38 @@ import { Bot } from 'lucide-react'
 import { SettingsActionRow } from '@overlay/modules-react/settings'
 import { getEnabledChatModels } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+import { useByokModels } from '@/components/providers/useByokModels'
+import { resolveDefaultChatModelId } from '@/shared/chat/default-chat-model'
 
 export function DefaultChatModelSetting({
   defaultActModelId,
-  defaultAskModelIds,
   isFreeTier,
   onlyAllowZdrModels,
   enabledModelIds,
+  modelOrder,
   disabled,
   onSelect,
 }: {
   defaultActModelId?: string
-  defaultAskModelIds?: readonly string[]
   isFreeTier: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
+  modelOrder?: readonly string[]
   disabled?: boolean
-  onSelect: (actModelId: string, askModelIds: string[]) => void
+  onSelect: (actModelId: string) => void
 }) {
   useGatewayModelCatalog()
+  useByokModels()
   const effectiveOnlyAllowZdr = onlyAllowZdrModels && !isFreeTier
-  const models = getEnabledChatModels(enabledModelIds, isFreeTier)
+  const models = getEnabledChatModels(enabledModelIds, isFreeTier, modelOrder)
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
 
-  const currentSelection = resolveDefaultChatModelSelection({
+  const currentActModelId = resolveDefaultChatModelId({
     defaultActModelId,
-    defaultAskModelIds,
     isFreeTier,
     onlyAllowZdrModels: effectiveOnlyAllowZdr,
   })
-  const currentActModelId = currentSelection.actModelId
 
   return (
     <SettingsActionRow
@@ -47,8 +47,7 @@ export function DefaultChatModelSetting({
           disabled={disabled}
           value={currentActModelId}
           onChange={(event) => {
-            const nextActModelId = event.target.value
-            onSelect(nextActModelId, [nextActModelId])
+            onSelect(event.target.value)
           }}
           className="min-w-44 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
         >

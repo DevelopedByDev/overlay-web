@@ -11,9 +11,43 @@ export function tierDefaultActModelId(isFreeTier: boolean): string {
   return isFreeTier ? FREE_TIER_AUTO_MODEL_ID : PAID_TIER_DEFAULT_MODEL_ID
 }
 
+/**
+ * Resolves the single default chat model ID for new conversations.
+ * Ask mode has been removed — every conversation uses a single model.
+ */
+export function resolveDefaultChatModelId({
+  defaultActModelId,
+  isFreeTier,
+  onlyAllowZdrModels = false,
+}: {
+  defaultActModelId?: string
+  isFreeTier: boolean
+  onlyAllowZdrModels?: boolean
+}): string {
+  const tierDefault = tierDefaultActModelId(isFreeTier)
+
+  let actModelId = defaultActModelId?.trim() || undefined
+
+  if (isFreeTier) {
+    actModelId = actModelId ? resolveFreeTierChatModelId(actModelId) ?? tierDefault : tierDefault
+  } else if (onlyAllowZdrModels) {
+    actModelId = actModelId && modelSupportsZeroDataRetention(actModelId) ? actModelId : tierDefault
+  }
+
+  if (!actModelId) actModelId = tierDefault
+  if (isFreeTier && !isFreeTierChatModelId(actModelId)) actModelId = tierDefault
+  if (onlyAllowZdrModels && !isFreeTier && !modelSupportsZeroDataRetention(actModelId)) actModelId = tierDefault
+
+  return actModelId
+}
+
+/**
+ * @deprecated Use {@link resolveDefaultChatModelId} instead. Ask mode has been removed.
+ * Kept for backward compat with code that still expects the old shape.
+ */
 export function resolveDefaultChatModelSelection({
   defaultActModelId,
-  defaultAskModelIds,
+  defaultAskModelIds: _defaultAskModelIds = [],
   isFreeTier,
   onlyAllowZdrModels = false,
 }: {
@@ -25,69 +59,17 @@ export function resolveDefaultChatModelSelection({
   askModelIds: string[]
   actModelId: string
 } {
-  const tierDefault = tierDefaultActModelId(isFreeTier)
-  const hasConfiguredDefault =
-    Boolean(defaultActModelId?.trim()) ||
-    Boolean(defaultAskModelIds && defaultAskModelIds.length > 0)
-
-  let actModelId = defaultActModelId
-  let askModelIds = defaultAskModelIds ? [...defaultAskModelIds] : undefined
-
-  if (isFreeTier) {
-    actModelId = actModelId ? resolveFreeTierChatModelId(actModelId) ?? tierDefault : undefined
-    askModelIds = askModelIds
-      ?.map((id) => resolveFreeTierChatModelId(id))
-      .filter((id): id is string => Boolean(id))
-  } else if (onlyAllowZdrModels) {
-    actModelId = actModelId && modelSupportsZeroDataRetention(actModelId) ? actModelId : undefined
-    askModelIds = askModelIds
-      ?.filter((id) => modelSupportsZeroDataRetention(id))
-  }
-
-  if (!hasConfiguredDefault) {
-    return normalizeChatModelSelection({
-      askModelIds: [tierDefault],
-      actModelId: tierDefault,
-      fallbackModelId: tierDefault,
-    })
-  }
-
-  const normalized = normalizeChatModelSelection({
-    askModelIds,
+  void _defaultAskModelIds
+  const actModelId = resolveDefaultChatModelId({ defaultActModelId, isFreeTier, onlyAllowZdrModels })
+  return normalizeChatModelSelection({
+    askModelIds: [actModelId],
     actModelId,
-    fallbackModelId: tierDefault,
+    fallbackModelId: actModelId,
   })
-
-  if (isFreeTier) {
-    const actIsFree = isFreeTierChatModelId(normalized.actModelId)
-    const askAreFree = normalized.askModelIds.every(isFreeTierChatModelId)
-    if (!actIsFree || !askAreFree) {
-      return normalizeChatModelSelection({
-        askModelIds: [tierDefault],
-        actModelId: tierDefault,
-        fallbackModelId: tierDefault,
-      })
-    }
-  }
-
-  if (onlyAllowZdrModels && !isFreeTier) {
-    const actSupportsZdr = modelSupportsZeroDataRetention(normalized.actModelId)
-    const askSupportZdr = normalized.askModelIds.every(modelSupportsZeroDataRetention)
-    if (!actSupportsZdr || !askSupportZdr) {
-      return normalizeChatModelSelection({
-        askModelIds: [tierDefault],
-        actModelId: tierDefault,
-        fallbackModelId: tierDefault,
-      })
-    }
-  }
-
-  return normalized
 }
 
 export function resolveDefaultChatModelDisplayName({
   defaultActModelId,
-  defaultAskModelIds,
   isFreeTier,
   onlyAllowZdrModels = false,
 }: {
@@ -96,11 +78,6 @@ export function resolveDefaultChatModelDisplayName({
   isFreeTier: boolean
   onlyAllowZdrModels?: boolean
 }): string {
-  const { actModelId } = resolveDefaultChatModelSelection({
-    defaultActModelId,
-    defaultAskModelIds,
-    isFreeTier,
-    onlyAllowZdrModels,
-  })
+  const actModelId = resolveDefaultChatModelId({ defaultActModelId, isFreeTier, onlyAllowZdrModels })
   return getModel(actModelId)?.name ?? actModelId
 }

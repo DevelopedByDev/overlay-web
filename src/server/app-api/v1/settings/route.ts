@@ -1,13 +1,12 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
+import type { AppSettings, ThemePresetId } from '@overlay/app-core'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
 
 const MAX_MODEL_ID_LENGTH = 160
-const MAX_ASK_MODEL_IDS = 4
 const MAX_ENABLED_MODEL_IDS = 400
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._~:/@+-]+$/
 const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
@@ -66,9 +65,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: ThemePresetId
       darkThemePreset?: ThemePresetId
       autoContinue?: boolean
-      defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
-      defaultAskModelIds?: string[]
       defaultActModelId?: string
       defaultImageModelId?: string
       defaultVideoModelId?: string
@@ -100,26 +97,11 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid autoContinue' }, { status: 400 })
     }
     if (
-      body.defaultChatMode !== undefined &&
-      body.defaultChatMode !== 'ask' &&
-      body.defaultChatMode !== 'act'
-    ) {
-      return NextResponse.json({ error: 'Invalid defaultChatMode' }, { status: 400 })
-    }
-    if (
       body.modelPreference !== undefined &&
       body.modelPreference !== 'same-for-each-chat' &&
       body.modelPreference !== 'different-for-each-chat'
     ) {
       return NextResponse.json({ error: 'Invalid modelPreference' }, { status: 400 })
-    }
-    if (
-      body.defaultAskModelIds !== undefined &&
-      (!Array.isArray(body.defaultAskModelIds) ||
-        body.defaultAskModelIds.length > MAX_ASK_MODEL_IDS ||
-        !body.defaultAskModelIds.every(isSafeModelId))
-    ) {
-      return NextResponse.json({ error: 'Invalid defaultAskModelIds' }, { status: 400 })
     }
     for (const key of [
       'defaultActModelId',
@@ -194,9 +176,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: string
       darkThemePreset?: string
       autoContinue?: boolean
-      defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
-      defaultAskModelIds?: string[]
       defaultActModelId?: string
       defaultImageModelId?: string
       defaultVideoModelId?: string
@@ -226,14 +206,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.autoContinue !== undefined) {
       mutationArgs.autoContinue = body.autoContinue
     }
-    if (body.defaultChatMode !== undefined) {
-      mutationArgs.defaultChatMode = body.defaultChatMode
-    }
     if (body.modelPreference !== undefined) {
       mutationArgs.modelPreference = body.modelPreference
-    }
-    if (body.defaultAskModelIds !== undefined) {
-      mutationArgs.defaultAskModelIds = body.defaultAskModelIds.map((id) => id.trim())
     }
     if (body.defaultActModelId !== undefined) {
       mutationArgs.defaultActModelId = body.defaultActModelId.trim()

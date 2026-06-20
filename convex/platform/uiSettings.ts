@@ -3,7 +3,6 @@ import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/
 import { requireServerSecret } from '../lib/auth'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
-const chatModeValidator = v.union(v.literal('ask'), v.literal('act'))
 const modelPreferenceValidator = v.union(v.literal('same-for-each-chat'), v.literal('different-for-each-chat'))
 const chatStreamingModeValidator = v.literal('token')
 const themePresetValidator = v.optional(v.string())
@@ -19,9 +18,7 @@ const uiSettingsValidator = v.object({
   useSecondarySidebar: v.boolean(),
   chatStreamingMode: chatStreamingModeValidator,
   autoContinue: v.boolean(),
-  defaultChatMode: chatModeValidator,
   modelPreference: modelPreferenceValidator,
-  defaultAskModelIds: v.array(v.string()),
   defaultActModelId: v.optional(v.string()),
   defaultImageModelId: v.optional(v.string()),
   defaultVideoModelId: v.optional(v.string()),
@@ -44,9 +41,7 @@ function defaultUiSettings() {
     useSecondarySidebar: false,
     chatStreamingMode: 'token' as const,
     autoContinue: false,
-    defaultChatMode: 'act' as const,
     modelPreference: 'same-for-each-chat' as const,
-    defaultAskModelIds: [] as string[],
     sendWithEnter: true,
     attachFilesToKnowledgeByDefault: false,
     onlyAllowZdrModels: false,
@@ -110,9 +105,7 @@ export const getByServer = query({
       chatStreamingMode:
         existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
       autoContinue: existing.autoContinue ?? false,
-      defaultChatMode: existing.defaultChatMode ?? 'act',
       modelPreference: existing.modelPreference ?? 'same-for-each-chat',
-      defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
       sendWithEnter: existing.sendWithEnter ?? true,
       attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
       onlyAllowZdrModels: existing.onlyAllowZdrModels ?? false,
@@ -143,9 +136,7 @@ export const upsertByServer = mutation({
     /** Ignored if sent; persisted value is always `token`. */
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
-    defaultChatMode: v.optional(chatModeValidator),
     modelPreference: v.optional(modelPreferenceValidator),
-    defaultAskModelIds: v.optional(v.array(v.string())),
     defaultActModelId: v.optional(v.string()),
     defaultImageModelId: v.optional(v.string()),
     defaultVideoModelId: v.optional(v.string()),
@@ -171,10 +162,7 @@ export const upsertByServer = mutation({
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
       chatStreamingMode: 'token' as const,
       autoContinue: args.autoContinue ?? existing?.autoContinue ?? false,
-      defaultChatMode: args.defaultChatMode ?? existing?.defaultChatMode ?? 'act' as const,
       modelPreference: args.modelPreference ?? existing?.modelPreference ?? 'same-for-each-chat' as const,
-      defaultAskModelIds:
-        safeModelIds(args.defaultAskModelIds) ?? safeModelIds(existing?.defaultAskModelIds) ?? [],
       sendWithEnter: args.sendWithEnter ?? existing?.sendWithEnter ?? true,
       attachFilesToKnowledgeByDefault:
         args.attachFilesToKnowledgeByDefault ?? existing?.attachFilesToKnowledgeByDefault ?? false,

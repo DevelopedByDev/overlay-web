@@ -1,6 +1,6 @@
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModel } from '@/shared/ai/gateway/model-data'
-import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+import { resolveDefaultChatModelId } from '@/shared/chat/default-chat-model'
 
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
@@ -92,7 +92,7 @@ export function readStoredActModelId(): string {
 /** Body fields for POST /api/v1/conversations — server clamps models for free tier. */
 export function resolveNewChatModelFields({
   defaultActModelId,
-  defaultAskModelIds,
+  defaultAskModelIds: _defaultAskModelIds = [],
   isFreeTier = false,
   onlyAllowZdrModels = false,
 }: {
@@ -105,15 +105,15 @@ export function resolveNewChatModelFields({
   actModelId: string
   lastMode: 'act'
 } {
-  const selection = resolveDefaultChatModelSelection({
+  void _defaultAskModelIds
+  const actModelId = resolveDefaultChatModelId({
     defaultActModelId,
-    defaultAskModelIds,
     isFreeTier,
     onlyAllowZdrModels,
   })
   return {
-    askModelIds: selection.askModelIds,
-    actModelId: selection.actModelId,
+    askModelIds: [actModelId],
+    actModelId,
     lastMode: 'act',
   }
 }

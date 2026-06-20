@@ -141,9 +141,6 @@ export function applySettingsPatch(settings: AppSettings, patch: Partial<AppSett
   return {
     ...settings,
     ...patch,
-    defaultAskModelIds: patch.defaultAskModelIds
-      ? [...patch.defaultAskModelIds]
-      : [...settings.defaultAskModelIds],
     dismissedZdrWarningModelIds: patch.dismissedZdrWarningModelIds
       ? [...patch.dismissedZdrWarningModelIds]
       : [...settings.dismissedZdrWarningModelIds],
