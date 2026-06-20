@@ -566,12 +566,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
     }
     if (responseBody) {
-      if (resolvedStreamPersistenceMode === 'convex-deltas') {
-        responseBody = responseBody.pipeThrough(
-          actGeneratingMessageService.createPersistenceTransform({
-            messageId: generatingMessageId,
-          }),
-        ) as ReadableStream<Uint8Array<ArrayBufferLike>>
+      if (resolvedStreamPersistenceMode !== 'direct') {
         const [clientBody, backgroundBody] = responseBody.tee()
         responseBody = clientBody
         after(async () => {

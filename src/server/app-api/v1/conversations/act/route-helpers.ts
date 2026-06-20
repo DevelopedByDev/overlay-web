@@ -12,7 +12,7 @@ export const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
 export const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
 export const MAX_ACT_MODEL_ATTEMPTS = 5
 
-export type ActStreamPersistenceMode = 'cloudflare-mirror' | 'convex-deltas' | 'direct'
+export type ActStreamPersistenceMode = 'cloudflare-mirror' | 'direct'
 export type ActModelAttemptFailureReason = 'budget' | 'pricing' | 'provider' | 'reservation'
 
 export type ActModelAttemptFailure = {
@@ -145,10 +145,7 @@ export function resolveActStreamPersistence(params: {
   if (params.requestedMode === 'direct') {
     return { mode: 'direct', useCloudflareStreamMirror: false }
   }
-  if (params.requestedMode === 'cloudflare-mirror') {
-    return { mode: 'cloudflare-mirror', useCloudflareStreamMirror: true }
-  }
-  return { mode: 'convex-deltas', useCloudflareStreamMirror: false }
+  return { mode: 'cloudflare-mirror', useCloudflareStreamMirror: true }
 }
 
 export function resolveActMultiModelState(params: {

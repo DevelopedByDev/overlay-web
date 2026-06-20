@@ -205,39 +205,6 @@ test('act assistant persistence finalizes generating messages and emits completi
   }])
 })
 
-test('act generating-message transform persists streamed text deltas', async () => {
-  const deltas: string[] = []
-  const service = new ActGeneratingMessageService({
-    repository: repository({
-      appendGeneratingMessageDelta: async (args) => {
-        if (args.textDelta) deltas.push(args.textDelta)
-      },
-    }),
-  })
-  const encoder = new TextEncoder()
-  const decoder = new TextDecoder()
-  const source = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encoder.encode('data: {"type":"text-delta","delta":"hello"}\n\n'))
-      controller.close()
-    },
-  })
-
-  const transformed = source.pipeThrough(service.createPersistenceTransform({
-    messageId: 'message_1' as Id<'conversationMessages'>,
-  }))
-  const reader = transformed.getReader()
-  let body = ''
-  while (true) {
-    const next = await reader.read()
-    if (next.done) break
-    body += decoder.decode(next.value)
-  }
-
-  assert.equal(body, 'data: {"type":"text-delta","delta":"hello"}\n\n')
-  assert.deepEqual(deltas, ['hello'])
-})
-
 test('act usage budget service skips reservations for unpaid/free-model attempts', async () => {
   const service = new ActUsageBudgetService({
     repository: repository(),

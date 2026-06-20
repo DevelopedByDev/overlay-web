@@ -36,15 +36,9 @@ test('resolveActStreamPersistence resolves persistence mode without relay verifi
     mode: 'cloudflare-mirror',
     useCloudflareStreamMirror: true,
   })
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'convex-deltas',
-  }), {
-    mode: 'convex-deltas',
-    useCloudflareStreamMirror: false,
-  })
   assert.deepEqual(resolveActStreamPersistence({}), {
-    mode: 'convex-deltas',
-    useCloudflareStreamMirror: false,
+    mode: 'cloudflare-mirror',
+    useCloudflareStreamMirror: true,
   })
 })
 
