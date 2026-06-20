@@ -9,10 +9,14 @@ function normalizeAskIds(raw: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const id of raw) {
-    const m = getModel(id)
-    if (!m || seen.has(m.id)) continue
-    seen.add(m.id)
-    out.push(m.id)
+    // Resolve through the model registry so legacy aliases are normalised, but
+    // preserve unknown IDs — the gateway catalog or BYOK connections may not
+    // have loaded yet. Replacing them with the fallback here would fight with
+    // the default-models effect and cause an infinite render loop.
+    const resolved = getModel(id)?.id ?? id
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+    out.push(resolved)
     if (out.length >= 4) break
   }
   return out
@@ -30,8 +34,12 @@ export function normalizeChatModelSelection({
   askModelIds: string[]
   actModelId: string
 } {
-  const fallback = getModel(fallbackModelId)?.id ?? DEFAULT_MODEL_ID
-  const resolvedAct = actModelId ? getModel(actModelId)?.id : undefined
+  const fallback = getModel(fallbackModelId)?.id ?? fallbackModelId
+  // Preserve unknown actModelId — the model may not be registered yet because
+  // the gateway catalog or BYOK connections are still loading. Replacing it
+  // with the fallback here would fight with the default-models effect and
+  // cause an infinite render loop.
+  const resolvedAct = actModelId?.trim() ? (getModel(actModelId)?.id ?? actModelId) : undefined
   let ask = normalizeAskIds([...(askModelIds ?? [])])
 
   if (resolvedAct && !ask.includes(resolvedAct)) {

@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { WorkOS } from '@workos-inc/node'
 import { logger } from '@/server/observability/logger'
 
 /**
@@ -12,14 +11,109 @@ import { logger } from '@/server/observability/logger'
  * Vault key naming convention: `byok_{userId}_{connectionId}`
  */
 
-function getWorkOSClient(): WorkOS {
+export type ByokVaultKeyContext = {
+  purpose: 'byok-provider-key'
+  userId: string
+  providerId: string
+  connectionId?: string
+}
+
+type VaultObjectMetadata = {
+  id?: unknown
+}
+
+type VaultObject = VaultObjectMetadata & {
+  value?: unknown
+}
+
+function getWorkOSApiKey(): string {
   const apiKey = process.env.WORKOS_API_KEY?.trim()
   if (!apiKey) {
     throw new Error(
       'WORKOS_API_KEY is not configured. BYOK vault operations require WorkOS Vault access.',
     )
   }
-  return new WorkOS(apiKey)
+  return apiKey
+}
+
+function getWorkOSBaseUrl(): string {
+  return (process.env.WORKOS_API_BASE_URL?.trim() || 'https://api.workos.com').replace(/\/$/, '')
+}
+
+function formatVaultApiError(status: number, requestId: string | null, payload: unknown): string {
+  const suffix = requestId ? ` (request id: ${requestId})` : ''
+  if (!payload || typeof payload !== 'object') return `WorkOS Vault request failed (${status})${suffix}`
+
+  const record = payload as Record<string, unknown>
+  const message =
+    typeof record.message === 'string' && record.message.trim()
+      ? record.message.trim()
+      : typeof record.error_description === 'string' && record.error_description.trim()
+        ? record.error_description.trim()
+        : typeof record.error === 'string' && record.error.trim()
+          ? record.error.trim()
+          : `WorkOS Vault request failed (${status})`
+  const errors = record.errors
+  if (Array.isArray(errors) && errors.length > 0) {
+    const details = errors
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null
+        const error = entry as Record<string, unknown>
+        return typeof error.code === 'string'
+          ? error.code
+          : typeof error.message === 'string'
+            ? error.message
+            : null
+      })
+      .filter((entry): entry is string => Boolean(entry))
+      .join(', ')
+    return details ? `${message}: ${details}${suffix}` : `${message}${suffix}`
+  }
+  if (errors && typeof errors === 'object') {
+    return `${message}: ${JSON.stringify(errors)}${suffix}`
+  }
+  return `${message}${suffix}`
+}
+
+async function vaultRequest<T>(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<T | null> {
+  const response = await fetch(`${getWorkOSBaseUrl()}${path}`, {
+    method,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${getWorkOSApiKey()}`,
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    cache: 'no-store',
+  })
+
+  if (response.status === 204) return null
+
+  const text = await response.text()
+  const payload = text
+    ? (() => {
+        try {
+          return JSON.parse(text) as unknown
+        } catch (_error) {
+          return text
+        }
+      })()
+    : null
+
+  if (!response.ok) {
+    throw new Error(formatVaultApiError(response.status, response.headers.get('x-request-id'), payload))
+  }
+
+  return payload as T
+}
+
+function getVaultObjectId(payload: VaultObjectMetadata | null): string {
+  if (payload && typeof payload.id === 'string' && payload.id.trim()) return payload.id
+  throw new Error('WorkOS Vault did not return an object id')
 }
 
 /**
@@ -29,16 +123,17 @@ function getWorkOSClient(): WorkOS {
 export async function writeByokVaultKey(
   vaultKeyName: string,
   apiKey: string,
+  context: ByokVaultKeyContext,
 ): Promise<string> {
-  const workos = getWorkOSClient()
   try {
-    const result = await workos.vault.createObject({
+    const result = await vaultRequest<VaultObjectMetadata>('POST', '/vault/v1/kv', {
       name: vaultKeyName,
       value: apiKey,
-      context: {},
+      key_context: context,
     })
-    logger.info(`[BYOK Vault] Created vault object "${vaultKeyName}" (id: ${result.id})`)
-    return result.id
+    const vaultObjectId = getVaultObjectId(result)
+    logger.info(`[BYOK Vault] Created vault object "${vaultKeyName}" (id: ${vaultObjectId})`)
+    return vaultObjectId
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     logger.error(`[BYOK Vault] Failed to create vault object "${vaultKeyName}": ${message}`)
@@ -54,10 +149,8 @@ export async function updateByokVaultKey(
   vaultObjectId: string,
   apiKey: string,
 ): Promise<void> {
-  const workos = getWorkOSClient()
   try {
-    await workos.vault.updateObject({
-      id: vaultObjectId,
+    await vaultRequest<VaultObject>('PUT', `/vault/v1/kv/${encodeURIComponent(vaultObjectId)}`, {
       value: apiKey,
     })
     logger.info(`[BYOK Vault] Updated vault object (id: ${vaultObjectId})`)
@@ -73,9 +166,8 @@ export async function updateByokVaultKey(
  * Called when a BYOK connection is deleted.
  */
 export async function deleteByokVaultKey(vaultObjectId: string): Promise<void> {
-  const workos = getWorkOSClient()
   try {
-    await workos.vault.deleteObject({ id: vaultObjectId })
+    await vaultRequest<null>('DELETE', `/vault/v1/kv/${encodeURIComponent(vaultObjectId)}`)
     logger.info(`[BYOK Vault] Deleted vault object (id: ${vaultObjectId})`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -97,10 +189,12 @@ export async function readByokVaultKey(vaultObjectId: string): Promise<string | 
   const apiKey = process.env.WORKOS_API_KEY?.trim()
   if (!apiKey) return null
 
-  const workos = new WorkOS(apiKey)
   try {
-    const obj = await workos.vault.readObject({ id: vaultObjectId })
-    const val = typeof obj.value === 'string' ? obj.value.trim() : ''
+    const obj = await vaultRequest<VaultObject>(
+      'GET',
+      `/vault/v1/kv/${encodeURIComponent(vaultObjectId)}`,
+    )
+    const val = typeof obj?.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -121,10 +215,12 @@ export async function readByokVaultKeyByName(vaultKeyName: string): Promise<stri
     return process.env[vaultKeyName]?.trim() || null
   }
 
-  const workos = new WorkOS(apiKey)
   try {
-    const obj = await workos.vault.readObjectByName(vaultKeyName)
-    const val = typeof obj.value === 'string' ? obj.value.trim() : ''
+    const obj = await vaultRequest<VaultObject>(
+      'GET',
+      `/vault/v1/kv/name/${encodeURIComponent(vaultKeyName)}`,
+    )
+    const val = typeof obj?.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
   } catch (_error) {
     // Object doesn't exist or can't be read — fall back to env var

@@ -82,6 +82,22 @@ export const list = query({
   },
 })
 
+export const listPublicByServer = query({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.array(connectionRowValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db
+      .query('userProviderConnections')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect()
+    return rows.map(stripSecrets)
+  },
+})
+
 // ─── Server-Facing Mutations (serverSecret auth) ───
 //
 // These are called by the Next.js BFF after it has written/updated/deleted the
@@ -175,6 +191,75 @@ export const deleteByServer = mutation({
   },
 })
 
+export const ensureDefaultGatewayByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    endpoint: v.string(),
+    displayName: v.string(),
+    enabledModelIds: v.array(v.string()),
+    discoveredModelsJson: v.optional(v.string()),
+    discoveredAt: v.optional(v.number()),
+  },
+  returns: connectionRowValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const now = Date.now()
+    const rows = await ctx.db
+      .query('userProviderConnections')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect()
+    const existing = rows.find(
+      (row) => row.providerId === 'vercel-ai-gateway' && row.isDefault,
+    )
+
+    if (existing) {
+      const updates: Partial<Doc<'userProviderConnections'>> = {
+        endpoint: args.endpoint,
+        displayName: args.displayName,
+        isDefault: true,
+        isDeletable: false,
+        updatedAt: now,
+      }
+      if (existing.enabledModelIds.length === 0 && args.enabledModelIds.length > 0) {
+        updates.enabledModelIds = args.enabledModelIds
+      }
+      if (!existing.discoveredModelsJson && args.discoveredModelsJson) {
+        updates.discoveredModelsJson = args.discoveredModelsJson
+      }
+      if (!existing.discoveredAt && args.discoveredAt) {
+        updates.discoveredAt = args.discoveredAt
+      }
+      if (!existing.vaultObjectId && existing.status !== 'active') {
+        updates.status = 'active'
+      }
+      await ctx.db.patch(existing._id, updates)
+      const updated = await ctx.db.get(existing._id)
+      if (!updated) throw new Error('Connection not found after update')
+      return stripSecrets(updated)
+    }
+
+    const connectionId = await ctx.db.insert('userProviderConnections', {
+      userId: args.userId,
+      providerId: 'vercel-ai-gateway',
+      endpoint: args.endpoint,
+      displayName: args.displayName,
+      vaultKeyName: '',
+      enabledModelIds: args.enabledModelIds,
+      discoveredModelsJson: args.discoveredModelsJson,
+      discoveredAt: args.discoveredAt,
+      status: 'active',
+      isDefault: true,
+      isDeletable: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const created = await ctx.db.get(connectionId)
+    if (!created) throw new Error('Connection not found after create')
+    return stripSecrets(created)
+  },
+})
+
 // ─── Server-Facing Queries (serverSecret auth) ───
 //
 // Used by the runtime model resolver to fetch a user's connections (including
@@ -185,6 +270,7 @@ const connectionWithVaultValidator = v.object({
   userId: v.string(),
   providerId: v.string(),
   endpoint: v.string(),
+  displayName: v.string(),
   vaultKeyName: v.string(),
   vaultObjectId: v.optional(v.string()),
   enabledModelIds: v.array(v.string()),
@@ -208,6 +294,7 @@ export const getByServer = query({
       userId: row.userId,
       providerId: row.providerId,
       endpoint: row.endpoint,
+      displayName: row.displayName,
       vaultKeyName: row.vaultKeyName,
       vaultObjectId: row.vaultObjectId,
       enabledModelIds: row.enabledModelIds,
@@ -235,6 +322,7 @@ export const listByServer = query({
       userId: row.userId,
       providerId: row.providerId,
       endpoint: row.endpoint,
+      displayName: row.displayName,
       vaultKeyName: row.vaultKeyName,
       vaultObjectId: row.vaultObjectId,
       enabledModelIds: row.enabledModelIds,

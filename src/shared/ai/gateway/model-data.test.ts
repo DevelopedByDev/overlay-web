@@ -5,6 +5,7 @@ import {
   getEnabledChatModels,
   registerGatewayCatalogModels,
 } from './model-data'
+import { byokConnectionsToChatModels } from './byok-model-conversion'
 
 const DYNAMIC_MODEL_ID = 'example/new-premium-model'
 
@@ -45,4 +46,24 @@ test('free models remain first for free-tier users', () => {
     'openrouter/free',
     DYNAMIC_MODEL_ID,
   ])
+})
+
+test('BYOK model conversion ignores non-array payloads', () => {
+  assert.deepEqual(byokConnectionsToChatModels({ data: [] }), [])
+})
+
+test('default Vercel AI Gateway row does not create BYOK duplicate models', () => {
+  const models = byokConnectionsToChatModels([{
+    _id: 'default-gateway-connection',
+    providerId: 'vercel-ai-gateway',
+    endpoint: 'https://ai-gateway.vercel.sh/v1',
+    displayName: 'Vercel AI Gateway',
+    enabledModelIds: ['gpt-5.4'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'gpt-5.4', name: 'GPT 5.4' }] }),
+    status: 'active',
+    isDefault: true,
+    isDeletable: false,
+  }])
+
+  assert.deepEqual(models, [])
 })

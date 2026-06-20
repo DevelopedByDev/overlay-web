@@ -56,10 +56,8 @@ export function AutomationEditorPanel({
   const [testState, setTestState] = useState<AutomationTestState>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
-  const modelOptions = useMemo(
-    () => getModelsByIntelligence(isFreeTier).filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'),
-    [isFreeTier],
-  )
+  const modelOptions = getModelsByIntelligence(isFreeTier)
+    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
 
   useEffect(() => {
     setDraft(automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID))

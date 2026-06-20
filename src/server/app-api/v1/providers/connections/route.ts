@@ -3,29 +3,111 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { convex } from '@/server/database/convex'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
+import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   writeByokVaultKey,
   updateByokVaultKey,
   deleteByokVaultKey,
   byokVaultKeyName,
+  type ByokVaultKeyContext,
 } from '@/server/ai/gateway/byok-vault'
+import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { getByokPreset } from '@overlay/llm-gateway'
+
+const DEFAULT_GATEWAY_PROVIDER_ID = 'vercel-ai-gateway'
 
 async function validateEndpointUrl(url: unknown): Promise<string | null> {
   const result = await validatePublicNetworkUrl(url, { allowLocalDev: false, requireHttps: true })
   return result.ok ? null : result.error
 }
 
+function sortConnections(connections: ByokConnectionRow[]): ByokConnectionRow[] {
+  return [...connections].sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+    return a.displayName.localeCompare(b.displayName)
+  })
+}
+
+function defaultGatewayNeedsSeed(connections: readonly ByokConnectionRow[]): boolean {
+  const existing = connections.find(
+    (connection) => connection.providerId === DEFAULT_GATEWAY_PROVIDER_ID && connection.isDefault,
+  )
+  if (!existing) return true
+  return existing.enabledModelIds.length === 0 || !existing.discoveredModelsJson
+}
+
+async function ensureDefaultGatewayConnection(
+  userId: string,
+  serverSecret: string,
+  connections: readonly ByokConnectionRow[],
+): Promise<ByokConnectionRow[]> {
+  if (!defaultGatewayNeedsSeed(connections)) return [...connections]
+
+  const preset = getByokPreset(DEFAULT_GATEWAY_PROVIDER_ID)
+  if (!preset) return [...connections]
+
+  const gatewayModels = await getGatewayLanguageCatalog().catch((_error) => [])
+  const discoveredModels = gatewayModels.map((model) => ({
+    id: model.id,
+    name: model.name,
+  }))
+  const seeded = await convex.mutation<ByokConnectionRow>(
+    'providers/connections:ensureDefaultGatewayByServer',
+    {
+      serverSecret,
+      userId,
+      endpoint: preset.defaultBaseURL,
+      displayName: preset.label,
+      enabledModelIds: discoveredModels.map((model) => model.id),
+      ...(discoveredModels.length > 0
+        ? {
+            discoveredModelsJson: JSON.stringify({ data: discoveredModels }),
+            discoveredAt: Date.now(),
+          }
+        : {}),
+    },
+  )
+  if (!seeded) return [...connections]
+
+  return [
+    seeded,
+    ...connections.filter((connection) => connection._id !== seeded._id),
+  ]
+}
+
+function buildVaultContext(
+  userId: string,
+  providerId: string,
+  connectionId?: string,
+): ByokVaultKeyContext {
+  return {
+    purpose: 'byok-provider-key',
+    userId,
+    providerId,
+    ...(connectionId ? { connectionId } : {}),
+  }
+}
+
 // GET /api/v1/providers/connections — list the authenticated user's connections
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
+    const serverSecret = getInternalApiSecret()
 
-    const connections = await convex.query('providers/connections:list', {
-      accessToken: auth.accessToken,
-      userId: auth.userId,
-    })
-    return NextResponse.json(connections || [])
+    const connections = await convex.query<ByokConnectionRow[]>(
+      'providers/connections:listPublicByServer',
+      {
+        serverSecret,
+        userId: auth.userId,
+      },
+    )
+    const seededConnections = await ensureDefaultGatewayConnection(
+      auth.userId,
+      serverSecret,
+      connections || [],
+    )
+    const data = sortConnections(seededConnections)
+    return NextResponse.json({ data, hasMore: false, total: data.length })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch provider connections' }, { status: 500 })
   }
@@ -85,15 +167,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    // 1. Write the API key to WorkOS Vault
-    // We need a connection ID first for the vault key name, so we create the
-    // Convex record first with a placeholder, then update with the vault object ID.
-    // Alternatively, we generate a unique vault key name upfront.
+    // 1. Write the API key to WorkOS Vault with an up-front unique key name.
     const vaultKeyName = byokVaultKeyName(auth.userId, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
 
     let vaultObjectId: string | undefined
     if (typeof apiKey === 'string' && apiKey.length > 0) {
-      vaultObjectId = await writeByokVaultKey(vaultKeyName, apiKey)
+      vaultObjectId = await writeByokVaultKey(
+        vaultKeyName,
+        apiKey,
+        buildVaultContext(auth.userId, providerId),
+      )
     }
 
     // 2. Create the Convex record
@@ -154,6 +237,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const existing = await convex.query<{
       userId: string
       vaultObjectId?: string
+      providerId: string
+      displayName?: string
     } | null>(
       'providers/connections:getByServer',
       { serverSecret, connectionId },
@@ -178,7 +263,15 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       } else {
         // No existing vault object — create a new one
         const vaultKeyName = byokVaultKeyName(auth.userId, connectionId)
-        vaultObjectId = await writeByokVaultKey(vaultKeyName, apiKey)
+        vaultObjectId = await writeByokVaultKey(
+          vaultKeyName,
+          apiKey,
+          buildVaultContext(
+            auth.userId,
+            existing.providerId,
+            connectionId,
+          ),
+        )
       }
     }
 

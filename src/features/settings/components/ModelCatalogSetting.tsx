@@ -25,15 +25,32 @@ export function ModelCatalogSetting({
   disabled?: boolean
   onChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => void
 }) {
-  const { refresh: refreshByok } = useByokModels()
-  const { isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
+  const { connections: byokConnections, refresh: refreshByok } = useByokModels()
+  const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const modelCatalogVersion = useMemo(
+    () =>
+      [
+        gatewayModels.map((model) => model.id).join(','),
+        byokConnections
+          .map((connection) => [
+            connection._id,
+            connection.status,
+            connection.discoveredAt ?? 0,
+            connection.enabledModelIds.join(','),
+          ].join(':'))
+          .join('|'),
+      ].join('::'),
+    [byokConnections, gatewayModels],
+  )
 
   // Get the ordered list of enabled models
   const orderedModels = useMemo(() => {
+    // AVAILABLE_MODELS is updated out-of-band by the catalog hooks above.
+    void modelCatalogVersion
     return getEnabledChatModels(enabledModelIds, false, modelOrder)
-  }, [enabledModelIds, modelOrder])
+  }, [enabledModelIds, modelCatalogVersion, modelOrder])
 
   // Local drag-reorder state — the working order before saving
   const [localOrder, setLocalOrder] = useState<string[] | null>(null)

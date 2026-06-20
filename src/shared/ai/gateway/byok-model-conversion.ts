@@ -55,6 +55,8 @@ export interface ByokConnectionRow {
   lastTestedAt?: number
   isDefault: boolean
   isDeletable: boolean
+  createdAt?: number
+  updatedAt?: number
 }
 
 // ─── Discovery response shape (OpenAI-compatible /models) ───
@@ -62,6 +64,25 @@ export interface ByokConnectionRow {
 interface DiscoveredModel {
   id: string
   name?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object'
+}
+
+export function isByokConnectionRow(value: unknown): value is ByokConnectionRow {
+  if (!isRecord(value)) return false
+  return (
+    typeof value._id === 'string' &&
+    typeof value.providerId === 'string' &&
+    typeof value.endpoint === 'string' &&
+    typeof value.displayName === 'string' &&
+    Array.isArray(value.enabledModelIds) &&
+    value.enabledModelIds.every((id) => typeof id === 'string') &&
+    (value.status === 'active' || value.status === 'error' || value.status === 'untested') &&
+    typeof value.isDefault === 'boolean' &&
+    typeof value.isDeletable === 'boolean'
+  )
 }
 
 /**
@@ -91,6 +112,8 @@ export function parseDiscoveredModels(json: string | undefined): DiscoveredModel
  * supports. The user discovers capabilities empirically at runtime.
  */
 export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatModel[] {
+  if (connection.isDefault && connection.providerId === 'vercel-ai-gateway') return []
+
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)
   const discoveredById = new Map(discovered.map((m) => [m.id, m]))
 
@@ -116,10 +139,12 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
  * objects, sorted by provider display name then model name.
  */
 export function byokConnectionsToChatModels(
-  connections: readonly ByokConnectionRow[],
+  connections: readonly ByokConnectionRow[] | unknown,
 ): ChatModel[] {
+  if (!Array.isArray(connections)) return []
   const models: ChatModel[] = []
   for (const connection of connections) {
+    if (!isByokConnectionRow(connection)) continue
     if (connection.status === 'error') continue
     models.push(...byokConnectionToChatModels(connection))
   }

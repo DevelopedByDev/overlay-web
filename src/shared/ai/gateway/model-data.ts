@@ -79,7 +79,8 @@ const byokModels = new Map<string, ChatModel>()
  * connections from the BFF. Rebuilds {@link AVAILABLE_MODELS} to include
  * both gateway catalog models and BYOK models.
  */
-export function registerByokModels(connections: readonly ByokConnectionRow[]): void {
+export function registerByokModels(connections: readonly ByokConnectionRow[] | unknown): void {
+  if (!Array.isArray(connections)) return
   byokModels.clear()
   const models = byokConnectionsToChatModels(connections)
   for (const model of models) {

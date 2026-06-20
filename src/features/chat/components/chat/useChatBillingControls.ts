@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
@@ -44,6 +44,7 @@ export function useChatBillingControls({
   chatPrefsHydrated,
   onlyAllowZdrModels,
   enabledModelIds,
+  modelCatalogVersion,
   modelOrder,
   pathname,
   router,
@@ -60,6 +61,7 @@ export function useChatBillingControls({
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
+  modelCatalogVersion?: string | number
   modelOrder?: readonly string[]
   pathname: string
   router: ChatRouter
@@ -88,11 +90,23 @@ export function useChatBillingControls({
   const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
   const isModelAccessRestricted = isFreeTier
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
-  const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted, modelOrder)
-    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-  const selectableTextModels = effectiveOnlyAllowZdrModels
-    ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
-    : enabledTextModels
+  const enabledTextModels = useMemo(
+    () => {
+      // AVAILABLE_MODELS is a mutable shared registry populated by catalog hooks.
+      // This version value makes the memo refresh after those hooks register models.
+      void modelCatalogVersion
+      return getEnabledChatModels(enabledModelIds, isModelAccessRestricted, modelOrder)
+        .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+    },
+    [enabledModelIds, isModelAccessRestricted, modelCatalogVersion, modelOrder],
+  )
+  const selectableTextModels = useMemo(
+    () =>
+      effectiveOnlyAllowZdrModels
+        ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
+        : enabledTextModels,
+    [effectiveOnlyAllowZdrModels, enabledTextModels],
+  )
   const premiumModelBlocked =
     isModelAccessRestricted && !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked

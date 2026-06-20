@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import posthog from 'posthog-js'
 import {
@@ -250,7 +250,24 @@ export default function ChatExperience({
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
   } = useGatewayModelCatalog()
-  useByokModels()
+  const {
+    connections: byokConnections,
+  } = useByokModels()
+  const modelCatalogVersion = useMemo(
+    () =>
+      [
+        gatewayCatalogModels.map((model) => model.id).join(','),
+        byokConnections
+          .map((connection) => [
+            connection._id,
+            connection.status,
+            connection.discoveredAt ?? 0,
+            connection.enabledModelIds.join(','),
+          ].join(':'))
+          .join('|'),
+      ].join('::'),
+    [byokConnections, gatewayCatalogModels],
+  )
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser, isLoading: authLoading } = useAuth()
@@ -486,6 +503,7 @@ export default function ChatExperience({
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
     enabledModelIds: settings.enabledChatModelIds,
+    modelCatalogVersion,
     modelOrder: settings.modelOrder,
     pathname,
     router,
