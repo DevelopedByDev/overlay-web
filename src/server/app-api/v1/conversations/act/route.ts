@@ -573,19 +573,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           try {
             await drainReadableStream(backgroundBody)
           } catch (err) {
-            logger.error('[conversations/act] Background stream drain failed:', summarizeErrorForLog(err))
+            const reason = summarizeErrorForLog(err)
+            const isAbort = reason.includes('abort') || reason.includes('AbortError')
+            logger.error('[conversations/act] Background stream drain failed:', { reason, isAbort })
             if (budgetReservationId && !budgetReservationFinalized) {
               await actUsageBudgetService.releaseReservation({
                 userId,
                 reservationId: budgetReservationId,
-                reason: summarizeErrorForLog(err),
+                reason,
               }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
               budgetReservationId = null
             }
             await actGeneratingMessageService.fail({
               conversationId: actWebhookConversationId,
               emitWebhook: !actWebhookSkip,
-              error: err,
+              error: isAbort
+                ? new Error('generation_interrupted_server_timeout')
+                : err,
               messageId: generatingMessageId,
               turnId: actWebhookTurnId,
               userId,

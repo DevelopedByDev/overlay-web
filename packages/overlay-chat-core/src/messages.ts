@@ -440,6 +440,9 @@ export function errorLabel(err: Error | null | undefined): string | null {
   if (message.includes('insufficient_credits')) return 'No budget remaining.'
   if (message.includes('storage_limit_exceeded')) return 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.'
   if (message.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
+  if (message.includes('generation_interrupted_server_timeout')) {
+    return 'Generation was interrupted by the server. Try sending your message again.'
+  }
   if (message.includes('supported image formats') || message.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'
   }

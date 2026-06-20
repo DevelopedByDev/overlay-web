@@ -1072,15 +1072,16 @@ export const finalizeStaleGeneratingMessages = mutation({
     for (const message of stale) {
       const deltas = await getMessageDeltas(ctx, message._id)
       const hydrated = applyStreamingDeltas(message, deltas)
-      const fallbackText = 'Generation ended before a final response was saved.'
-      const content = hydrated.content?.trim() ? hydrated.content : fallbackText
+      const hasContent = (hydrated.content?.trim()?.length ?? 0) > 0
+      const fallbackText = 'generation_interrupted_server_timeout'
+      const content = hasContent ? hydrated.content : fallbackText
       const parts = Array.isArray(hydrated.parts) && hydrated.parts.length > 0
         ? hydrated.parts
         : [{ type: 'text' as const, text: content }]
       await ctx.db.patch(message._id, {
         content,
         parts,
-        status: 'completed',
+        status: 'error',
         updatedAt: Date.now(),
       })
       deletedDeltas += await deleteDeltaDocs(ctx, deltas)
@@ -1179,10 +1180,16 @@ export const runStaleGeneratingCleanup = internalMutation({
     for (const message of stale) {
       const deltas = await getMessageDeltas(ctx, message._id)
       const hydrated = applyStreamingDeltas(message, deltas)
+      const hasContent = (hydrated.content?.trim()?.length ?? 0) > 0
+      const fallbackText = 'generation_interrupted_server_timeout'
+      const content = hasContent ? hydrated.content : fallbackText
+      const parts = Array.isArray(hydrated.parts) && hydrated.parts.length > 0
+        ? hydrated.parts
+        : [{ type: 'text' as const, text: content }]
       await ctx.db.patch(message._id, {
-        content: hydrated.content,
-        parts: hydrated.parts,
-        status: 'completed',
+        content,
+        parts,
+        status: 'error',
         updatedAt: Date.now(),
       })
       deletedDeltas += await deleteDeltaDocs(ctx, deltas)
