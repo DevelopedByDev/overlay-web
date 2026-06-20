@@ -24,14 +24,8 @@ type AuthorizedStream = StreamMetadata & {
 }
 
 type DurableObjectInput = {
-  bodyText: string
-  cookie: string
-  idempotencyKey: string | null
-  nextOrigin: string
-  relaySecret: string
   requestId: string
   streamId: string
-  userAgent: string
   metadata: StreamMetadata
   diagnostics: StreamDiagnostics
 }
@@ -42,10 +36,6 @@ type DurableObjectIngestInput = {
   metadata: StreamMetadata
   requestId: string
   streamId: string
-}
-
-function buildActStreamIdempotencyKey(turnId: string, slotIndex: number): string {
-  return `act:${turnId.trim()}:${Math.max(0, Math.floor(slotIndex))}`
 }
 
 type SessionRow = {
@@ -404,7 +394,6 @@ async function routeIngestToStreamObject(request: Request, env: Env): Promise<Re
 async function routeToStreamObject(
   request: Request,
   env: Env,
-  action: 'start' | 'resume' | 'stop',
 ): Promise<Response> {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   const envError = requireEnv(env)
@@ -482,11 +471,7 @@ async function routeToStreamObject(
     `${authorized.userId}:${authorized.conversationId}:${authorized.turnId}:${authorized.variantIndex}`,
   )
   const stub = env.CHAT_STREAMS.getByName(streamName)
-  const userAgent = request.headers.get('user-agent') ?? ''
-  const idempotencyKey = request.headers.get('Idempotency-Key')?.trim()
-    || buildActStreamIdempotencyKey(authorized.turnId, authorized.variantIndex)
-  console.info('[chat-stream-worker] routing request', {
-    action,
+  console.info('[chat-stream-worker] routing resume', {
     requestId,
     stream: streamName.slice(0, 12),
     conversationId: authorized.conversationId,
@@ -495,18 +480,12 @@ async function routeToStreamObject(
     modelId: diagnostics.modelId,
     mode: diagnostics.mode,
   })
-  const response = await stub.fetch(`https://chat-stream.internal/${action}`, {
+  const response = await stub.fetch('https://chat-stream.internal/resume', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      bodyText,
-      cookie,
-      idempotencyKey,
-      nextOrigin: env.OVERLAY_NEXT_ORIGIN,
-      relaySecret: env.CHAT_STREAM_RELAY_SECRET,
       requestId,
       streamId: streamName,
-      userAgent,
       metadata: authorized,
       diagnostics,
     } satisfies DurableObjectInput),
@@ -529,14 +508,8 @@ const worker: ExportedHandler<Env> = {
     if (url.pathname === `${STREAM_PATH_PREFIX}/ingest`) {
       return routeIngestToStreamObject(request, env)
     }
-    if (url.pathname === `${STREAM_PATH_PREFIX}/start`) {
-      return routeToStreamObject(request, env, 'start')
-    }
     if (url.pathname === `${STREAM_PATH_PREFIX}/resume`) {
-      return routeToStreamObject(request, env, 'resume')
-    }
-    if (url.pathname === `${STREAM_PATH_PREFIX}/stop`) {
-      return routeToStreamObject(request, env, 'stop')
+      return routeToStreamObject(request, env)
     }
 
     return json({ error: 'Not found' }, { status: 404 })
@@ -570,12 +543,9 @@ class Client {
 
 export class ChatStreamDurableObject extends DurableObject<Env> {
   private clients = new Set<Client>()
-  private upstreamAbortController: AbortController | null = null
   private upstreamRunning = false
-  private stopped = false
   private streamTextDecoder = new TextDecoder()
   private eventBuffer = ''
-  private upstreamSetCookie: string | null = null
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -609,9 +579,7 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     const url = new URL(request.url)
     if (url.pathname === '/ingest') return this.handleIngest(request)
     const input = await request.json() as DurableObjectInput
-    if (url.pathname === '/start') return this.handleStart(input)
     if (url.pathname === '/resume') return this.handleResume(input)
-    if (url.pathname === '/stop') return this.handleStop(input)
     return json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -667,16 +635,12 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
   }
 
   private sseHeaders(): Headers {
-    const headers = new Headers({
+    return new Headers({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
       'x-vercel-ai-ui-message-stream': 'v1',
     })
-    if (this.upstreamSetCookie) {
-      headers.set('Set-Cookie', this.upstreamSetCookie)
-    }
-    return headers
   }
 
   private async handleIngest(request: Request): Promise<Response> {
@@ -786,75 +750,8 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
       })
     } finally {
       this.upstreamRunning = false
-      this.upstreamAbortController = null
       this.closeClients()
     }
-  }
-
-  private async handleStart(input: DurableObjectInput): Promise<Response> {
-    let session = this.getSession()
-    const created = !session
-    if (!session) {
-      session = this.createSession(input)
-    }
-    if (!this.verifyInputOwner(input, session)) {
-      console.warn('[chat-stream-worker] stream owner mismatch', {
-        requestId: input.requestId,
-        stream: session.stream_id.slice(0, 12),
-      })
-      return relayError({
-        code: 'relay_stream_owner_mismatch',
-        error: 'Chat stream owner mismatch',
-        fallbackSafe: false,
-        phase: 'routing',
-        requestId: input.requestId,
-        status: 403,
-      })
-    }
-
-    if (created) {
-      console.info('[chat-stream-worker] upstream starting', {
-        requestId: input.requestId,
-        stream: session.stream_id.slice(0, 12),
-        conversationId: input.metadata.conversationId,
-        turnId: input.metadata.turnId,
-        variantIndex: input.metadata.variantIndex,
-        modelId: input.diagnostics.modelId,
-        mode: input.diagnostics.mode,
-      })
-      try {
-        await this.startUpstream(input)
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-        this.markError(reason)
-        console.warn('[chat-stream-worker] start failed', {
-          requestId: input.requestId,
-          stream: session.stream_id.slice(0, 12),
-          phase: 'upstream',
-          upstreamStatus: error instanceof RelayUpstreamError ? error.status : null,
-          modelId: input.diagnostics.modelId,
-          reason,
-        })
-        return relayError({
-          code: 'relay_upstream_failed',
-          error: reason,
-          fallbackSafe: false,
-          phase: 'upstream',
-          requestId: input.requestId,
-          status: 502,
-          upstreamStatus: error instanceof RelayUpstreamError ? error.status : undefined,
-        })
-      }
-    }
-
-    console.info('[chat-stream-worker] start connected', {
-      requestId: input.requestId,
-      stream: session.stream_id.slice(0, 12),
-      frameCount: session.frame_count,
-      status: session.status,
-      modelId: input.diagnostics.modelId,
-    })
-    return this.createReplayResponse()
   }
 
   private async handleResume(input: DurableObjectInput): Promise<Response> {
@@ -872,104 +769,6 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     return this.createReplayResponse()
   }
 
-  private async handleStop(input: DurableObjectInput): Promise<Response> {
-    const session = this.getSession()
-    if (!session) return json({ ok: true, stopped: false })
-    if (!this.verifyInputOwner(input, session)) {
-      return json({ error: 'Unauthorized stream' }, { status: 403 })
-    }
-
-    this.stopped = true
-    this.upstreamAbortController?.abort()
-    const stopResponse = await fetch(new URL('/api/v1/conversations/stop', input.nextOrigin), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': input.cookie,
-        'x-overlay-chat-stream-relay': 'cloudflare',
-        'x-overlay-chat-stream-secret': input.relaySecret,
-      },
-      body: JSON.stringify({
-        conversationId: session.conversation_id,
-        messageId: session.message_id ?? undefined,
-        partialContent: session.partial_text,
-        partialParts: session.partial_text ? [{ type: 'text', text: session.partial_text }] : undefined,
-      }),
-    })
-
-    this.markCompleted()
-    this.closeClients()
-    console.info('[chat-stream-worker] stop', {
-      requestId: input.requestId,
-      stream: session.stream_id.slice(0, 12),
-      stopStatus: stopResponse.status,
-      frameCount: session.frame_count,
-    })
-    return json({ ok: stopResponse.ok, stopped: true }, { status: stopResponse.ok ? 200 : 502 })
-  }
-
-  private async startUpstream(input: DurableObjectInput): Promise<void> {
-    let body: Record<string, unknown>
-    try {
-      body = JSON.parse(input.bodyText) as Record<string, unknown>
-    } catch {
-      throw new Error('Invalid upstream request body')
-    }
-
-    body.streamPersistenceMode = 'cloudflare-relay'
-    const controller = new AbortController()
-    this.upstreamAbortController = controller
-    const upstreamHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Cookie': input.cookie,
-      'User-Agent': input.userAgent,
-      'x-request-id': input.requestId,
-      'x-overlay-chat-stream-relay': 'cloudflare',
-      'x-overlay-chat-stream-secret': input.relaySecret,
-    }
-    const idempotencyKey = input.idempotencyKey?.trim()
-      || buildActStreamIdempotencyKey(input.metadata.turnId, input.metadata.variantIndex)
-    if (idempotencyKey) {
-      upstreamHeaders['Idempotency-Key'] = idempotencyKey
-    }
-
-    const response = await fetch(new URL('/api/v1/conversations/act', input.nextOrigin), {
-      method: 'POST',
-      headers: upstreamHeaders,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-
-    if (!response.ok) {
-      const responseText = (await response.text()).slice(0, 500)
-      throw new RelayUpstreamError(
-        responseText || `Upstream returned ${response.status}`,
-        response.status,
-      )
-    }
-    if (!response.body) {
-      throw new Error('Upstream response body is empty')
-    }
-
-    const messageId = response.headers.get('x-overlay-generating-message-id')?.trim() || null
-    this.upstreamSetCookie = response.headers.get('Set-Cookie')
-    this.ctx.storage.sql.exec(
-      'UPDATE sessions SET message_id = ?, updated_at = ?',
-      messageId,
-      Date.now(),
-    )
-
-    this.upstreamRunning = true
-    console.info('[chat-stream-worker] upstream connected', {
-      requestId: input.requestId,
-      stream: input.streamId.slice(0, 12),
-      upstreamStatus: response.status,
-      messageIdPresent: Boolean(messageId),
-      modelId: input.diagnostics.modelId,
-    })
-    this.ctx.waitUntil(this.drainUpstream(response.body, input))
-  }
-
   private async drainMirroredStream(
     body: ReadableStream<Uint8Array>,
     input: DurableObjectIngestInput,
@@ -983,59 +782,16 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
           this.persistAndBroadcast(value)
         }
       }
-      if (!this.stopped) {
-        this.markCompleted()
-        const session = this.getSession()
-        console.info('[chat-stream-worker] ingest completed', {
-          requestId: input.requestId,
-          stream: input.streamId.slice(0, 12),
-          frameCount: session?.frame_count ?? null,
-          modelId: input.diagnostics.modelId,
-        })
-      }
+      this.markCompleted()
+      const session = this.getSession()
+      console.info('[chat-stream-worker] ingest completed', {
+        requestId: input.requestId,
+        stream: input.streamId.slice(0, 12),
+        frameCount: session?.frame_count ?? null,
+        modelId: input.diagnostics.modelId,
+      })
     } finally {
       reader.releaseLock()
-    }
-  }
-
-  private async drainUpstream(
-    body: ReadableStream<Uint8Array>,
-    input: DurableObjectInput,
-  ): Promise<void> {
-    const reader = body.getReader()
-    try {
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        if (value && value.byteLength > 0) {
-          this.persistAndBroadcast(value)
-        }
-      }
-      if (!this.stopped) {
-        this.markCompleted()
-        const session = this.getSession()
-        console.info('[chat-stream-worker] upstream completed', {
-          requestId: input.requestId,
-          stream: input.streamId.slice(0, 12),
-          frameCount: session?.frame_count ?? null,
-          modelId: input.diagnostics.modelId,
-        })
-      }
-    } catch (error) {
-      if (!this.stopped) {
-        const reason = error instanceof Error ? error.message : String(error)
-        this.markError(reason)
-        console.warn('[chat-stream-worker] upstream stream failed', {
-          requestId: input.requestId,
-          stream: input.streamId.slice(0, 12),
-          modelId: input.diagnostics.modelId,
-          reason,
-        })
-      }
-    } finally {
-      this.upstreamRunning = false
-      this.upstreamAbortController = null
-      this.closeClients()
     }
   }
 
@@ -1200,15 +956,5 @@ export class ChatStreamDurableObject extends DurableObject<Env> {
     }
     this.ctx.storage.sql.exec('DELETE FROM frames')
     this.ctx.storage.sql.exec('DELETE FROM sessions')
-  }
-}
-
-class RelayUpstreamError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message)
-    this.name = 'RelayUpstreamError'
   }
 }

@@ -14,10 +14,6 @@ to this Worker in the background. For a turn it:
 3. Replays those frames when a browser reconnects or reloads.
 4. Preserves partial output so stopping or disconnecting does not lose the turn.
 
-The legacy `/start` endpoint still supports routing `/act` through the Durable
-Object for compatibility and debugging, but normal persistent turns should use
-the passive mirror path.
-
 The Next app still performs entitlement checks, model routing, provider calls,
 tool execution, usage accounting, and durable conversation persistence.
 

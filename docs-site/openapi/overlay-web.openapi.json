@@ -1632,7 +1632,6 @@
                     "type": "string",
                     "enum": [
                       "cloudflare-mirror",
-                      "cloudflare-relay",
                       "convex-deltas",
                       "direct"
                     ]
@@ -1839,7 +1838,6 @@
                     "type": "string",
                     "enum": [
                       "cloudflare-mirror",
-                      "cloudflare-relay",
                       "convex-deltas",
                       "direct"
                     ]

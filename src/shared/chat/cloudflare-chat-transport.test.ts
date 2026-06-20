@@ -4,33 +4,9 @@ import {
   ChatTransportHttpError,
   createChatDiagnosticFetch,
   resolvePersistentChatStreamMode,
-  shouldBypassChatStreamRelay,
-  shouldFallbackAfterRelayError,
 } from './cloudflare-chat-transport'
 
-test('legacy relay predicate bypasses while a first chat only has a client ID', () => {
-  assert.equal(shouldBypassChatStreamRelay({
-    conversationClientId: 'client-123',
-    turnId: 'turn-123',
-  }), true)
-})
-
-test('legacy relay predicate allows relay once the conversation has a persisted ID', () => {
-  assert.equal(shouldBypassChatStreamRelay({
-    conversationId: 'conversation-123',
-    conversationClientId: 'client-123',
-    turnId: 'turn-123',
-  }), false)
-})
-
-test('legacy relay predicate does not bypass ordinary persisted turns', () => {
-  assert.equal(shouldBypassChatStreamRelay({
-    conversationId: 'conversation-123',
-    turnId: 'turn-123',
-  }), false)
-})
-
-test('defaults persistent sends to direct cloudflare mirror mode', () => {
+test('defaults persistent sends to cloudflare mirror mode', () => {
   assert.equal(resolvePersistentChatStreamMode({
     conversationId: 'conversation-123',
     turnId: 'turn-123',
@@ -45,29 +21,9 @@ test('defaults persistent sends to direct cloudflare mirror mode', () => {
   }), 'direct')
   assert.equal(resolvePersistentChatStreamMode({
     conversationId: 'conversation-123',
-    streamPersistenceMode: 'cloudflare-relay',
+    streamPersistenceMode: 'direct',
     turnId: 'turn-123',
-  }), 'cloudflare-relay')
-})
-
-test('only falls back when the relay explicitly says the upstream was not started', () => {
-  assert.equal(shouldFallbackAfterRelayError(new ChatTransportHttpError({
-    endpoint: '/api/chat-stream/v1/streams/start',
-    fallbackSafe: true,
-    message: 'Relay authorization failed',
-    phase: 'authorization',
-    requestId: 'request-123',
-    status: 401,
-  })), true)
-  assert.equal(shouldFallbackAfterRelayError(new ChatTransportHttpError({
-    endpoint: '/api/chat-stream/v1/streams/start',
-    fallbackSafe: false,
-    message: 'Provider request failed',
-    phase: 'upstream',
-    requestId: 'request-123',
-    status: 502,
-  })), false)
-  assert.equal(shouldFallbackAfterRelayError(new Error('network disconnected')), false)
+  }), 'direct')
 })
 
 test('preserves structured relay error details for browser diagnostics', async () => {
@@ -86,7 +42,7 @@ test('preserves structured relay error details for browser diagnostics', async (
     }))
 
     await assert.rejects(
-      diagnosticFetch('/api/chat-stream/v1/streams/start', {
+      diagnosticFetch('/api/v1/conversations/act', {
         headers: { 'x-request-id': 'request-456' },
       }),
       (error: unknown) => {

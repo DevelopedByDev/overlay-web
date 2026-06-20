@@ -12,7 +12,7 @@ export const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
 export const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
 export const MAX_ACT_MODEL_ATTEMPTS = 5
 
-export type ActStreamPersistenceMode = 'cloudflare-mirror' | 'cloudflare-relay' | 'convex-deltas' | 'direct'
+export type ActStreamPersistenceMode = 'cloudflare-mirror' | 'convex-deltas' | 'direct'
 export type ActModelAttemptFailureReason = 'budget' | 'pricing' | 'provider' | 'reservation'
 
 export type ActModelAttemptFailure = {
@@ -138,38 +138,17 @@ export function resolveEffectiveActModelId(modelId?: string): string {
 
 export function resolveActStreamPersistence(params: {
   requestedMode?: ActStreamPersistenceMode
-  verifiedCloudflareRelay: boolean
 }): {
-  ignoredUnverifiedRelay: boolean
   mode: ActStreamPersistenceMode
   useCloudflareStreamMirror: boolean
-  useCloudflareStreamRelay: boolean
 } {
   if (params.requestedMode === 'direct') {
-    return {
-      mode: 'direct',
-      useCloudflareStreamMirror: false,
-      useCloudflareStreamRelay: false,
-      ignoredUnverifiedRelay: false,
-    }
+    return { mode: 'direct', useCloudflareStreamMirror: false }
   }
   if (params.requestedMode === 'cloudflare-mirror') {
-    return {
-      mode: 'cloudflare-mirror',
-      useCloudflareStreamMirror: true,
-      useCloudflareStreamRelay: false,
-      ignoredUnverifiedRelay: false,
-    }
+    return { mode: 'cloudflare-mirror', useCloudflareStreamMirror: true }
   }
-
-  const useCloudflareStreamRelay =
-    params.requestedMode === 'cloudflare-relay' && params.verifiedCloudflareRelay
-  return {
-    mode: useCloudflareStreamRelay ? 'cloudflare-relay' : 'convex-deltas',
-    useCloudflareStreamMirror: false,
-    useCloudflareStreamRelay,
-    ignoredUnverifiedRelay: params.requestedMode === 'cloudflare-relay' && !useCloudflareStreamRelay,
-  }
+  return { mode: 'convex-deltas', useCloudflareStreamMirror: false }
 }
 
 export function resolveActMultiModelState(params: {

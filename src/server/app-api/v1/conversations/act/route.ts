@@ -30,7 +30,6 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
-import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import {
   canMirrorToCloudflareStream,
   mirrorChatStreamToCloudflare,
@@ -150,18 +149,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
 	      requestedMode: streamPersistenceMode,
-	      verifiedCloudflareRelay: isVerifiedChatStreamRelayRequest(request),
 	    })
-	    const useCloudflareStreamRelay = streamPersistence.useCloudflareStreamRelay
 	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
 	    const resolvedStreamPersistenceMode = streamPersistence.mode
-    if (streamPersistence.ignoredUnverifiedRelay) {
-      logger.warn('[conversations/act] Ignoring unverified cloudflare-relay persistence request', {
-        requestId,
-        conversationId,
-        turnId,
-      })
-    }
     logger.info('[conversations/act] streamPersistence', {
       requestId,
       mode: resolvedStreamPersistenceMode,
@@ -570,16 +560,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
     responseHeaders.set('x-request-id', requestId)
-    if (useCloudflareStreamRelay || useCloudflareStreamMirror) {
+    if (useCloudflareStreamMirror) {
       responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
       responseHeaders.set('x-overlay-auth-user-id', userId)
       responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
     }
     if (responseBody) {
-      if (
-        resolvedStreamPersistenceMode === 'convex-deltas' ||
-        resolvedStreamPersistenceMode === 'cloudflare-mirror'
-      ) {
+      if (resolvedStreamPersistenceMode === 'convex-deltas') {
         responseBody = responseBody.pipeThrough(
           actGeneratingMessageService.createPersistenceTransform({
             messageId: generatingMessageId,

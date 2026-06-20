@@ -85,7 +85,7 @@ export const ActConversationRequest = z.object({
   requestedToolIds: z.unknown().optional(),
   memoryEnabled: z.boolean().optional(),
   actAbortTimeoutMs: z.number().finite().positive().optional(),
-  streamPersistenceMode: z.enum(['cloudflare-mirror', 'cloudflare-relay', 'convex-deltas', 'direct']).optional(),
+  streamPersistenceMode: z.enum(['cloudflare-mirror', 'convex-deltas', 'direct']).optional(),
   mentions: z.array(z.object({
     type: z.string(),
     id: z.string(),

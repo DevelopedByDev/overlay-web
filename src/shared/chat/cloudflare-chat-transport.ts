@@ -149,10 +149,6 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
   }
 }
 
-export function shouldFallbackAfterRelayError(error: unknown): boolean {
-  return error instanceof ChatTransportHttpError && error.fallbackSafe === true
-}
-
 export function getCloudflareChatStreamRelayApi(): string | null {
   const configured = publicEnv.chatStreamRelayUrl
   if (!configured) return null
@@ -182,29 +178,14 @@ function shouldUseDirectStream(body: ChatBody): boolean {
   return record?.temporaryChat === true || record?.streamPersistenceMode === 'direct'
 }
 
-function shouldForceCloudflareRelay(body: ChatBody): boolean {
-  const record = body as Record<string, unknown> | undefined
-  return record?.streamPersistenceMode === 'cloudflare-relay'
-}
-
-export function resolvePersistentChatStreamMode(body: ChatBody): 'cloudflare-mirror' | 'cloudflare-relay' | 'direct' {
+export function resolvePersistentChatStreamMode(body: ChatBody): 'cloudflare-mirror' | 'direct' {
   if (shouldUseDirectStream(body)) return 'direct'
-  if (shouldForceCloudflareRelay(body)) return 'cloudflare-relay'
   return 'cloudflare-mirror'
-}
-
-export function shouldBypassChatStreamRelay(body: ChatBody): boolean {
-  const record = body as Record<string, unknown> | undefined
-  const conversationId =
-    typeof record?.conversationId === 'string' ? record.conversationId.trim() : ''
-  const conversationClientId =
-    typeof record?.conversationClientId === 'string' ? record.conversationClientId.trim() : ''
-  return !conversationId && Boolean(conversationClientId)
 }
 
 function logStreamCompletion(
   stream: ReadableStream<UIMessageChunk>,
-  path: 'cloudflare' | 'cloudflare-mirror' | 'convex-fallback' | 'direct',
+  path: 'cloudflare' | 'cloudflare-mirror' | 'direct',
   body: ChatBody,
 ): ReadableStream<UIMessageChunk> {
   const withTtft = isTtftClientDebugEnabled()
@@ -258,7 +239,6 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   implements ChatTransport<UI_MESSAGE>
 {
   private readonly fallbackTransport: DefaultChatTransport<UI_MESSAGE>
-  private readonly relayTransport: DefaultChatTransport<UI_MESSAGE>
   private readonly relayApi: string
   private readonly diagnosticFetch: ChatFetch
 
@@ -271,33 +251,6 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
     this.fallbackTransport = new DefaultChatTransport({
       api,
       prepareSendMessagesRequest,
-      ...rest,
-      fetch: diagnosticFetch,
-    })
-    this.relayTransport = new DefaultChatTransport({
-      api: `${this.relayApi}/start`,
-      prepareSendMessagesRequest: async (request) => {
-        const prepared = await prepareSendMessagesRequest?.({
-          ...request,
-          api,
-        })
-        const preparedBody = prepared?.body ?? {
-          ...request.body,
-          id: request.id,
-          messages: request.messages,
-          trigger: request.trigger,
-          messageId: request.messageId,
-        }
-        return {
-          api: `${this.relayApi}/start`,
-          credentials: prepared?.credentials ?? request.credentials ?? 'same-origin',
-          headers: prepared?.headers ?? request.headers,
-          body: {
-            ...preparedBody,
-            streamPersistenceMode: 'cloudflare-relay',
-          },
-        }
-      },
       ...rest,
       fetch: diagnosticFetch,
     })
@@ -317,40 +270,13 @@ class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
       return logStreamCompletion(stream, 'direct', body)
     }
 
-    if (streamMode === 'cloudflare-mirror') {
-      const body = {
-        ...(options.body ?? {}),
-        streamPersistenceMode: 'cloudflare-mirror',
-      }
-      console.info('[chat-stream] path=cloudflare-mirror start', streamLogFields(body))
-      const stream = await this.fallbackTransport.sendMessages({ ...options, body })
-      return logStreamCompletion(stream, 'cloudflare-mirror', body)
+    const body = {
+      ...(options.body ?? {}),
+      streamPersistenceMode: 'cloudflare-mirror',
     }
-
-    console.info('[chat-stream] path=cloudflare start', streamLogFields(options.body))
-    try {
-      // Do not race this request with an uncancelled fallback. A slow production
-      // cold start can exceed five seconds after /act has already reserved the
-      // idempotency key, causing the duplicate fallback to fail with 409.
-      const stream = await this.relayTransport.sendMessages(options)
-      console.info('[chat-stream] path=cloudflare connected', streamLogFields(options.body))
-      return logStreamCompletion(stream, 'cloudflare', options.body)
-    } catch (error) {
-      const fallbackSafe = shouldFallbackAfterRelayError(error)
-      console.warn('[chat-stream] path=convex-fallback fallback', {
-        ...streamLogFields(options.body),
-        fallbackSafe,
-        phase: error instanceof ChatTransportHttpError ? error.phase : null,
-        requestId: error instanceof ChatTransportHttpError ? error.requestId : null,
-        status: error instanceof ChatTransportHttpError ? error.status : null,
-        reason: error instanceof Error ? error.message : String(error),
-      })
-      if (!fallbackSafe) {
-        throw error
-      }
-      const fallbackStream = await this.fallbackTransport.sendMessages(options)
-      return logStreamCompletion(fallbackStream, 'convex-fallback', options.body)
-    }
+    console.info('[chat-stream] path=cloudflare-mirror start', streamLogFields(body))
+    const stream = await this.fallbackTransport.sendMessages({ ...options, body })
+    return logStreamCompletion(stream, 'cloudflare-mirror', body)
   }
 
   async reconnectToStream(

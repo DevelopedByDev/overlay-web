@@ -23,42 +23,28 @@ test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 45_500.9 }), 45_500)
 })
 
-test('resolveActStreamPersistence preserves relay verification behavior', () => {
+test('resolveActStreamPersistence resolves persistence mode without relay verification', () => {
   assert.deepEqual(resolveActStreamPersistence({
     requestedMode: 'direct',
-    verifiedCloudflareRelay: false,
   }), {
     mode: 'direct',
     useCloudflareStreamMirror: false,
-    useCloudflareStreamRelay: false,
-    ignoredUnverifiedRelay: false,
   })
   assert.deepEqual(resolveActStreamPersistence({
     requestedMode: 'cloudflare-mirror',
-    verifiedCloudflareRelay: false,
   }), {
     mode: 'cloudflare-mirror',
     useCloudflareStreamMirror: true,
-    useCloudflareStreamRelay: false,
-    ignoredUnverifiedRelay: false,
   })
   assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'cloudflare-relay',
-    verifiedCloudflareRelay: false,
+    requestedMode: 'convex-deltas',
   }), {
     mode: 'convex-deltas',
     useCloudflareStreamMirror: false,
-    useCloudflareStreamRelay: false,
-    ignoredUnverifiedRelay: true,
   })
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'cloudflare-relay',
-    verifiedCloudflareRelay: true,
-  }), {
-    mode: 'cloudflare-relay',
+  assert.deepEqual(resolveActStreamPersistence({}), {
+    mode: 'convex-deltas',
     useCloudflareStreamMirror: false,
-    useCloudflareStreamRelay: true,
-    ignoredUnverifiedRelay: false,
   })
 })
 
