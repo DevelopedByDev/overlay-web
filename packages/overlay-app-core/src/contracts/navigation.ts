@@ -16,6 +16,7 @@ export type SettingsSubview =
   | 'account'
   | 'customization'
   | 'memories'
+  | 'providers'
   | 'models'
   | 'contact'
 export type ProjectSubview = 'chat' | 'note' | 'file'

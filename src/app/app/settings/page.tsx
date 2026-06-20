@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
+import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -47,6 +48,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'account',
   'customization',
   'memories',
+  'providers',
   'models',
   'contact',
 ])
@@ -317,6 +319,10 @@ export default function SettingsPage() {
             <div className="h-full">
               <MemoriesView userId="" onHeaderStateChange={setMemoriesHeaderState} />
             </div>
+          )}
+
+          {!isLoading && section === 'providers' && (
+            <ProviderConnectionsSetting />
           )}
 
           {!isLoading && section === 'models' && (

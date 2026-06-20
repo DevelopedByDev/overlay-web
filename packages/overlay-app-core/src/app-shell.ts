@@ -98,6 +98,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
   { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['vectorSearch'] },
+  { id: 'providers', label: 'Providers' },
   { id: 'models', label: 'Models' },
   { id: 'contact', label: 'Contact' },
 ] as const

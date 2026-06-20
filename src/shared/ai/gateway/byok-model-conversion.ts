@@ -51,6 +51,8 @@ export interface ByokConnectionRow {
   discoveredModelsJson?: string
   discoveredAt?: number
   status: 'active' | 'error' | 'untested'
+  lastError?: string
+  lastTestedAt?: number
   isDefault: boolean
   isDeletable: boolean
 }
