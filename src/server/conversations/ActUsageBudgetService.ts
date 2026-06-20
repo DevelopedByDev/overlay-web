@@ -3,6 +3,7 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { isPremiumModel } from '@/server/ai/pricing'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
@@ -36,6 +37,8 @@ export class ActUsageBudgetService {
     paid: boolean
     userId: string
   }): Promise<ActBudgetReservationResult> {
+    // BYOK models bypass Overlay billing — no budget reservation needed.
+    if (isByokModelId(args.modelId)) return { ok: true, reservationId: null }
     if (!args.paid || !isPremiumModel(args.modelId)) return { ok: true, reservationId: null }
     const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
       args.modelId,
@@ -82,6 +85,33 @@ export class ActUsageBudgetService {
     reservationId: string | null
     userId: string
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
+    // BYOK models bypass Overlay billing — record token counts with cost: 0
+    // so usage is still visible in the dashboard without charging credits.
+    if (isByokModelId(args.modelId)) {
+      if (args.inputTokens <= 0 && args.outputTokens <= 0) {
+        return { finalized: false, reservationId: args.reservationId }
+      }
+      const events = [{
+        type: 'agent' as const,
+        modelId: args.modelId,
+        inputTokens: args.inputTokens,
+        outputTokens: args.outputTokens,
+        cachedTokens: 0,
+        cost: 0,
+        timestamp: Date.now(),
+      }]
+      try {
+        await this.deps.repository.recordUsageBatch({
+          userId: args.userId,
+          forceFreeTierLimits: args.forceFreeTierLimits,
+          events,
+        })
+      } catch (err) {
+        logger.error('[conversations/act] Failed to record BYOK usage:', summarizeErrorForLog(err))
+      }
+      return { finalized: false, reservationId: null }
+    }
+
     const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
       args.modelId,
       args.inputTokens,

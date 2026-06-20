@@ -7,6 +7,7 @@ import {
   FREE_TIER_AUTO_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
 type FallbackParams = {
   modelId: string
@@ -34,6 +35,9 @@ function supportsRequiredInputs(modelId: string, params: FallbackParams): boolea
   const model = getModel(modelId)
   if (!model) return false
   if (HIDDEN_FALLBACK_MODEL_IDS.has(model.id)) return false
+  // BYOK models are never used as fallback candidates. If a BYOK model fails,
+  // the error is surfaced to the user rather than silently switching.
+  if (isByokModelId(model.id)) return false
   if (params.onlyAllowZdrModels && !model.supportsZeroDataRetention) return false
   if (params.requiresVision && !model.supportsVision) return false
   return true
@@ -72,6 +76,9 @@ function paidFallbackCandidates(params: FallbackParams): string[] {
 }
 
 export function getChatModelFallbackCandidates(params: FallbackParams): string[] {
+  // BYOK models don't get fallback candidates — if a BYOK model fails, surface
+  // the error rather than silently switching to an Overlay-hosted model.
+  if (isByokModelId(params.modelId)) return []
   const candidates = params.paid && !isFreeTierChatModelId(params.modelId)
     ? paidFallbackCandidates(params)
     : freeFallbackCandidates(params)

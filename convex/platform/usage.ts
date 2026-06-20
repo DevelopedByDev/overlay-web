@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx, typ
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { isByokModelId } from '../../src/shared/ai/gateway/byok-model-conversion'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from '../files/lib/storageQuota'
 import { roundCurrencyAmount } from '../../src/shared/ai/sandbox/daytona-pricing'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
@@ -23,6 +24,9 @@ function countsTowardFreeTierMessageLimit(event: {
   modelId?: string
 }): boolean {
   if (event.type !== 'ask' && event.type !== 'write' && event.type !== 'agent') return false
+  // BYOK models bypass Overlay billing entirely — they don't count toward
+  // free-tier message limits.
+  if (event.modelId && isByokModelId(event.modelId)) return false
   return event.modelId !== FREE_TIER_AUTO_MODEL_ID
 }
 
@@ -247,21 +251,28 @@ export async function applyUsageEvents(
   let totalOutputTokens = 0
 
   for (const event of events) {
-    if (event.type !== 'transcription' && event.cost > 0) {
+    if (event.type === 'transcription') continue
+    // BYOK models bypass Overlay billing — don't charge credits, but still
+    // accumulate token counts for display in the usage dashboard.
+    const isByok = event.modelId ? isByokModelId(event.modelId) : false
+    if (!isByok && event.cost > 0) {
       totalCost = roundCreditAmount(totalCost + event.cost)
-      totalInputTokens += event.inputTokens || 0
-      totalCachedInputTokens += event.cachedTokens || 0
-      totalOutputTokens += event.outputTokens || 0
     }
+    totalInputTokens += event.inputTokens || 0
+    totalCachedInputTokens += event.cachedTokens || 0
+    totalOutputTokens += event.outputTokens || 0
   }
 
-  if (totalCost > 0) {
+  // Always record token counts for the usage dashboard, even when cost is 0
+  // (e.g. BYOK models that bypass billing but should still show token usage).
+  const hasTokenCounts = totalInputTokens > 0 || totalCachedInputTokens > 0 || totalOutputTokens > 0
+  if (totalCost > 0 || hasTokenCounts) {
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
-    if (subscription && chargeCredits) {
+    if (totalCost > 0 && subscription && chargeCredits) {
       await ctx.db.patch(subscription._id, {
         creditsUsed: roundCreditAmount((subscription.creditsUsed ?? 0) + totalCost),
       })

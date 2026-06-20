@@ -12,6 +12,7 @@ import {
 } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import {
   FREE_TIER_AUTO_MODEL_ID,
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let actWebhookConversationId: Id<'conversations'> | undefined
   let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
+  let requestModelId: string | undefined
   try {
     const {
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -163,6 +165,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       variantIndex: rawMultiModelSlotIndex,
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
+    requestModelId = effectiveModelId
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
@@ -538,6 +541,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           modelId: attemptModelId,
           error: summarizeErrorForLog(error),
         })
+        if (attemptModelId && isByokModelId(attemptModelId)) {
+          return userFacingByokError(error, attemptModelId)
+        }
         return userFacingOpenRouterError(error)
       },
       messageMetadata: ({ part }) => {
@@ -850,8 +856,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       turnId: actWebhookTurnId,
       userId: currentUserId,
     })
+    const failedModelId = requestModelId ?? ''
+    const errorMessage = failedModelId && isByokModelId(failedModelId)
+      ? userFacingByokError(error, failedModelId)
+      : userFacingOpenRouterError(error)
     return NextResponse.json(
-      { error: userFacingOpenRouterError(error), requestId },
+      { error: errorMessage, requestId },
       { status: 500, headers: { 'x-request-id': requestId } },
     )
   }
@@ -869,4 +879,45 @@ function safeGatewayModelId(modelId: string): string | null {
   } catch (_error) {
     return null
   }
+}
+
+/**
+ * Returns a user-facing error message for BYOK model failures. BYOK models
+ * don't fall back to Overlay-hosted models, so errors must be surfaced clearly.
+ * Detects common tool-calling unsupported errors and provides actionable guidance.
+ */
+function userFacingByokError(error: unknown, _modelId: string): string {
+  const raw = String(error?.toString?.() ?? error ?? '')
+  const lower = raw.toLowerCase()
+  // Common error patterns when a model doesn't support tool calling
+  if (
+    lower.includes('tool') &&
+    (lower.includes('not supported') ||
+      lower.includes('unsupported') ||
+      lower.includes('does not support') ||
+      lower.includes('no tool') ||
+      lower.includes('tools are not'))
+  ) {
+    return (
+      'This model doesn\'t support tool calling. ' +
+      'Switch to a model that supports tools (most frontier models do), or use Ask mode for plain text.'
+    )
+  }
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')) {
+    return (
+      'Your API key for this provider was rejected. Check the key in Settings → Providers and try again.'
+    )
+  }
+  if (lower.includes('404') || lower.includes('model not found') || lower.includes('does not exist')) {
+    return (
+      'This model was not found on the provider. The provider may have renamed or removed it. ' +
+      'Try refreshing your model list in Settings → Providers.'
+    )
+  }
+  if (lower.includes('429') || lower.includes('rate limit')) {
+    return 'This provider is rate-limiting your requests. Wait a moment and try again.'
+  }
+  // Fall back to the raw error text, truncated
+  if (!raw.trim()) return 'The BYOK provider request failed. Check your provider connection in Settings → Providers.'
+  return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw
 }
