@@ -248,6 +248,7 @@ export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
 export function getEnabledChatModels(
   enabledModelIds: readonly string[],
   isFreeTier: boolean,
+  modelOrder?: readonly string[],
 ): ChatModel[] {
   const ids = enabledModelIds.length > 0 ? enabledModelIds : DEFAULT_CURATED_CHAT_MODEL_IDS
   const enabled = new Set(ids)
@@ -259,6 +260,19 @@ export function getEnabledChatModels(
     .filter((model): model is ChatModel => Boolean(model))
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
   const ordered = [...curated, ...additional]
+
+  // If the user has an explicit modelOrder, use it to sort the enabled models.
+  // Models in modelOrder appear first in that order; models not in modelOrder
+  // are appended in their default order. No free-tier hoisting when user
+  // controls order.
+  if (modelOrder && modelOrder.length > 0) {
+    const orderIndex = new Map(modelOrder.map((id, i) => [id, i]))
+    const inOrder = ordered.filter((m) => orderIndex.has(m.id))
+    inOrder.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
+    const notInOrder = ordered.filter((m) => !orderIndex.has(m.id))
+    return [...inOrder, ...notInOrder]
+  }
+
   const free = ordered.filter((model) => isFreeTierChatModelId(model.id))
   const premium = ordered.filter((model) => !isFreeTierChatModelId(model.id))
   return isFreeTier ? [...free, ...premium] : [...premium, ...free]

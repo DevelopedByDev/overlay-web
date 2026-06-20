@@ -44,6 +44,7 @@ export function useChatBillingControls({
   chatPrefsHydrated,
   onlyAllowZdrModels,
   enabledModelIds,
+  modelOrder,
   pathname,
   router,
   searchParams,
@@ -59,6 +60,7 @@ export function useChatBillingControls({
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
+  modelOrder?: readonly string[]
   pathname: string
   router: ChatRouter
   searchParams: ChatSearchParams
@@ -86,7 +88,7 @@ export function useChatBillingControls({
   const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
   const isModelAccessRestricted = isFreeTier
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
-  const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
+  const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted, modelOrder)
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   const selectableTextModels = effectiveOnlyAllowZdrModels
     ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)

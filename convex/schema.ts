@@ -24,6 +24,7 @@ export default defineSchema({
     dismissedZdrWarningGlobally: v.optional(v.boolean()),
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
     enabledChatModelIds: v.optional(v.array(v.string())),
+    modelOrder: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),

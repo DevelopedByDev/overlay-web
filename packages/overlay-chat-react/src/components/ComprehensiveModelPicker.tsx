@@ -193,6 +193,7 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                   })
                 : chatModels.map((m) => {
                     const isSel = m.id === ids.chatId
+                    const byok = isByokModel(m)
                     return (
                       <button
                         key={m.id}
@@ -206,9 +207,12 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                           setOpen(false)
                         }}
                       >
-                        <span className="flex items-center gap-2">
-                          {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                          {m.name}
+                        <span className="flex min-w-0 items-center gap-2">
+                          {isSel ? <Check size={10} className="shrink-0" /> : <span className="inline-block w-[10px] shrink-0" />}
+                          <span className="min-w-0 truncate">{m.name}</span>
+                          {byok && m.provider ? (
+                            <span className="shrink-0 truncate text-[10px] text-[var(--muted-light)]">{m.provider}</span>
+                          ) : null}
                         </span>
                         <ModelBadges m={m} isHovered={hoveredId === m.id} />
                       </button>

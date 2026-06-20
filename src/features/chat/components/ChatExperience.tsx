@@ -486,6 +486,7 @@ export default function ChatExperience({
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
     enabledModelIds: settings.enabledChatModelIds,
+    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,
