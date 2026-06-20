@@ -756,7 +756,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         )
       }
 
-      return getLanguageModel(attemptModelId, accessToken)
+      return getLanguageModel(attemptModelId, accessToken, userId)
     }
 
     const fallbackModelIds = getChatModelFallbackCandidates({
