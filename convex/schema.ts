@@ -36,6 +36,33 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
+  // BYOK (bring-your-own-key) provider connections. Each row represents a user-connected
+  // AI provider (OpenRouter, Groq, Ollama Cloud, custom OpenAI-compatible endpoint, etc.).
+  // The API key is stored in WorkOS Vault (keyed by vaultKeyName); this table holds only
+  // metadata — provider type, endpoint URL, display name, discovered models, and status.
+  // The Vercel AI Gateway connection is pre-seeded (isDefault: true, isDeletable: false)
+  // and uses Overlay's hosted key unless the user provides their own via vaultKeyName.
+  userProviderConnections: defineTable({
+    userId: v.string(),
+    providerId: v.string(),
+    endpoint: v.string(),
+    displayName: v.string(),
+    vaultKeyName: v.string(),
+    vaultObjectId: v.optional(v.string()),
+    enabledModelIds: v.array(v.string()),
+    discoveredModelsJson: v.optional(v.string()),
+    discoveredAt: v.optional(v.number()),
+    status: v.union(v.literal('active'), v.literal('error'), v.literal('untested')),
+    lastError: v.optional(v.string()),
+    lastTestedAt: v.optional(v.number()),
+    isDefault: v.boolean(),
+    isDeletable: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_providerId', ['userId', 'providerId']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.
