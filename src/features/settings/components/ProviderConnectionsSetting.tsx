@@ -28,7 +28,11 @@ import {
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import { DEFAULT_CURATED_CHAT_MODEL_IDS } from '@/shared/ai/gateway/model-data'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
-import { byokModelId, parseDiscoveredModels } from '@/shared/ai/gateway/byok-model-conversion'
+import {
+  byokModelId,
+  formatByokModelDisplayName,
+  parseDiscoveredModels,
+} from '@/shared/ai/gateway/byok-model-conversion'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
@@ -131,7 +135,7 @@ function buildProviderModelOptions(
     .map((model) => ({
       rawId: model.id,
       appModelId: providerModelId(connection, model.id),
-      name: model.name ?? model.id,
+      name: formatByokModelDisplayName(model.id, model.name),
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -147,7 +151,7 @@ function filterModels(models: readonly ProviderModelOption[], query: string): Pr
 // ─── Main Component ───
 
 export function ProviderConnectionsSetting() {
-  const { connections, isLoading, error, refresh } = useByokModels()
+  const { connections, isLoading, error, refresh, updateConnection } = useByokModels()
   const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const { settings, isSaving, updateSettings } = useAppSettings()
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -195,7 +199,7 @@ export function ProviderConnectionsSetting() {
       {/* Error state */}
       {error && !isLoading ? (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
-          <AlertCircle size={16} shrink-0 />
+          <AlertCircle size={16} className="shrink-0" />
           <span>{error}</span>
         </div>
       ) : null}
@@ -224,6 +228,7 @@ export function ProviderConnectionsSetting() {
               settingsDisabled={isSaving}
               onSettingsChange={updateSettings}
               onRefreshConnections={refresh}
+              onUpdateConnection={updateConnection}
               onRefreshGateway={refreshGateway}
               onEdit={() => setDialog({ mode: 'edit', connection })}
               onDelete={() => setDeleteTarget(connection)}
@@ -281,6 +286,7 @@ function ConnectionRow({
   settingsDisabled,
   onSettingsChange,
   onRefreshConnections,
+  onUpdateConnection,
   onRefreshGateway,
   onEdit,
   onDelete,
@@ -293,6 +299,22 @@ function ConnectionRow({
   settingsDisabled: boolean
   onSettingsChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => Promise<unknown>
   onRefreshConnections: () => Promise<void>
+  onUpdateConnection: (
+    connectionId: string,
+    patch: Partial<
+      Pick<
+        ByokConnectionRow,
+        | 'enabledModelIds'
+        | 'status'
+        | 'lastError'
+        | 'lastTestedAt'
+        | 'discoveredModelsJson'
+        | 'discoveredAt'
+        | 'displayName'
+        | 'endpoint'
+      >
+    >,
+  ) => void
   onRefreshGateway: () => Promise<void>
   onEdit: () => void
   onDelete: () => void
@@ -402,7 +424,7 @@ function ConnectionRow({
           const payload = await res.json().catch(() => null)
           throw new Error(payloadErrorMessage(payload) ?? 'Failed to update provider models')
         }
-        await onRefreshConnections()
+        onUpdateConnection(connection._id, { enabledModelIds: Array.from(rawSet) })
       }
       await onSettingsChange({
         enabledChatModelIds: nextEnabledSettingsIds,
@@ -418,7 +440,7 @@ function ConnectionRow({
     connection.enabledModelIds,
     defaultGateway,
     effectiveSettingsIds,
-    onRefreshConnections,
+    onUpdateConnection,
     onSettingsChange,
     settingsEnabledModelIds,
     settingsModelOrder,
@@ -466,7 +488,7 @@ function ConnectionRow({
           </div>
           {hasError && connection.lastError ? (
             <div className="mt-1 flex items-center gap-1 text-xs text-red-500">
-              <AlertCircle size={11} shrink-0 />
+              <AlertCircle size={11} className="shrink-0" />
               <span className="truncate">{connection.lastError}</span>
             </div>
           ) : null}
@@ -541,7 +563,7 @@ function ConnectionRow({
 
           {rowError ? (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
-              <AlertCircle size={13} shrink-0 />
+              <AlertCircle size={13} className="shrink-0" />
               <span>{rowError}</span>
             </div>
           ) : null}
@@ -635,6 +657,10 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
   const preset = getByokPreset(providerId)
   const isCustom = providerId === 'custom'
   const showEndpoint = isCustom || (preset?.allowsCustomEndpoint ?? false)
+  const displayNameLabel = isCustom ? 'Endpoint name' : 'Display name'
+  const displayNamePlaceholder = isCustom
+    ? 'e.g. ZenMux, Team router, Local gateway'
+    : 'e.g. Personal OpenRouter key'
 
   // Pre-fill endpoint from preset default when not custom and no existing endpoint
   useEffect(() => {
@@ -645,10 +671,10 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
 
   // Pre-fill display name from preset label
   useEffect(() => {
-    if (!displayName && preset && !isEdit) {
+    if (!displayName && preset && !isEdit && !isCustom) {
       setDisplayName(preset.label)
     }
-  }, [preset, displayName, isEdit])
+  }, [preset, displayName, isEdit, isCustom])
 
   const handleTest = useCallback(async () => {
     setTesting(true)
@@ -741,6 +767,18 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
   }, [isEdit, existing, displayName, enabledModelIds, apiKey, providerId, endpoint, preset, testResult, onSaved, onBusyChange])
 
   const canSave = displayName.trim().length > 0 && (!preset?.requiresApiKey || apiKey || isEdit)
+  const displayNameField = (
+    <div>
+      <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">{displayNameLabel}</label>
+      <input
+        type="text"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        placeholder={displayNamePlaceholder}
+        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+      />
+    </div>
+  )
 
   // Provider dropdown options (exclude vercel-ai-gateway for add mode)
   const availablePresets = BYOK_PROVIDER_PRESETS.filter(
@@ -798,7 +836,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
                   setEnabledModelIds([])
                   const newPreset = getByokPreset(e.target.value)
                   setEndpoint(newPreset?.defaultBaseURL ?? '')
-                  setDisplayName(newPreset?.label ?? '')
+                  setDisplayName(e.target.value === 'custom' ? '' : newPreset?.label ?? '')
                 }}
                 className="h-10 w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-8 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
               >
@@ -821,6 +859,8 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
             ) : null}
           </div>
         ) : null}
+
+        {isCustom ? displayNameField : null}
 
         {/* Endpoint URL — only for custom or when allowed */}
         {showEndpoint ? (
@@ -861,17 +901,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
           </div>
         </div>
 
-        {/* Display Name */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Display name</label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. Personal OpenRouter key"
-            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-          />
-        </div>
+        {!isCustom ? displayNameField : null}
 
         {/* Test results */}
         {testResult ? (
@@ -902,7 +932,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
                           }}
                           className="h-3.5 w-3.5 rounded border-[var(--border)]"
                         />
-                        <span className="truncate">{model.name ?? model.id}</span>
+                        <span className="truncate">{formatByokModelDisplayName(model.id, model.name)}</span>
                       </label>
                     ))}
                   </div>
@@ -910,7 +940,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
               </>
             ) : (
               <div className="flex items-center gap-2 text-xs text-red-500">
-                <AlertCircle size={14} shrink-0 />
+                <AlertCircle size={14} className="shrink-0" />
                 <span className="truncate">{testResult.error ?? 'Connection failed'}</span>
               </div>
             )}
@@ -941,7 +971,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
                     }}
                     className="h-3.5 w-3.5 rounded border-[var(--border)]"
                   />
-                  <span className="truncate">{model.name ?? model.id}</span>
+                  <span className="truncate">{formatByokModelDisplayName(model.id, model.name)}</span>
                 </label>
               ))}
             </div>

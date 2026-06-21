@@ -1,4 +1,4 @@
-import { BrainCircuit, Check, DollarSign, ShieldCheck, X, Zap } from 'lucide-react'
+import { BrainCircuit, Check, DollarSign, Server, ShieldCheck, X, Zap } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
 
@@ -55,6 +55,11 @@ export function ModelQualitiesPanel({
             {model.supportsZeroDataRetention ? <Check size={11} strokeWidth={2} /> : <X size={11} strokeWidth={2} />}
           </span>
         }
+      />
+      <MetricRow
+        icon={Server}
+        label="Provider"
+        value={<span className="block max-w-[6.75rem] truncate">{model.provider ?? 'Unknown'}</span>}
       />
     </div>
   )

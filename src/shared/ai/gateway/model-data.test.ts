@@ -52,6 +52,43 @@ test('BYOK model conversion ignores non-array payloads', () => {
   assert.deepEqual(byokConnectionsToChatModels({ data: [] }), [])
 })
 
+test('BYOK model conversion falls back from slug ids to readable names', () => {
+  const models = byokConnectionsToChatModels([{
+    _id: 'custom-connection',
+    providerId: 'custom',
+    endpoint: 'https://zenmux.ai/api/v1',
+    displayName: 'ZenMux',
+    enabledModelIds: ['z-ai/glm-5.2-free'],
+    discoveredModelsJson: JSON.stringify({
+      data: [{ id: 'z-ai/glm-5.2-free', name: 'z-ai/glm-5.2-free' }],
+    }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+
+  assert.equal(models[0]?.name, 'GLM 5.2 Free')
+  assert.equal(models[0]?.provider, 'ZenMux')
+})
+
+test('BYOK model conversion keeps real provider display names', () => {
+  const models = byokConnectionsToChatModels([{
+    _id: 'custom-connection',
+    providerId: 'custom',
+    endpoint: 'https://example.com/v1',
+    displayName: 'Example',
+    enabledModelIds: ['provider/model-slug'],
+    discoveredModelsJson: JSON.stringify({
+      data: [{ id: 'provider/model-slug', name: 'Human Model Name' }],
+    }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+
+  assert.equal(models[0]?.name, 'Human Model Name')
+})
+
 test('default Vercel AI Gateway row does not create BYOK duplicate models', () => {
   const models = byokConnectionsToChatModels([{
     _id: 'default-gateway-connection',

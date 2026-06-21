@@ -9,6 +9,13 @@ import {
 
 let cachedConnections: ByokConnectionRow[] | null = null
 let inFlight: Promise<ByokConnectionRow[]> | null = null
+const listeners = new Set<(connections: ByokConnectionRow[]) => void>()
+
+function setCachedConnections(connections: ByokConnectionRow[]): void {
+  cachedConnections = connections
+  registerByokModels(connections)
+  listeners.forEach((listener) => listener(connections))
+}
 
 function payloadErrorMessage(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
@@ -42,8 +49,7 @@ async function loadConnections(force = false): Promise<ByokConnectionRow[]> {
         throw new Error(payloadErrorMessage(payload) ?? 'Failed to load BYOK provider connections')
       }
       const connections = normalizeByokConnectionsPayload(payload)
-      cachedConnections = connections
-      registerByokModels(connections)
+      setCachedConnections(connections)
       return connections
     })
     .finally(() => {
@@ -56,6 +62,18 @@ export function useByokModels() {
   const [connections, setConnections] = useState<ByokConnectionRow[]>(() => cachedConnections ?? [])
   const [isLoading, setIsLoading] = useState(!cachedConnections)
   const [error, setError] = useState<string | null>(null)
+
+  const updateConnection = useCallback((
+    connectionId: string,
+    patch: Partial<Pick<ByokConnectionRow, 'enabledModelIds' | 'status' | 'lastError' | 'lastTestedAt' | 'discoveredModelsJson' | 'discoveredAt' | 'displayName' | 'endpoint'>>,
+  ) => {
+    if (!cachedConnections) return
+    setCachedConnections(
+      cachedConnections.map((connection) =>
+        connection._id === connectionId ? { ...connection, ...patch } : connection,
+      ),
+    )
+  }, [])
 
   const refresh = useCallback(async () => {
     setIsLoading(true)
@@ -71,9 +89,13 @@ export function useByokModels() {
   }, [])
 
   useEffect(() => {
+    listeners.add(setConnections)
     if (cachedConnections) {
+      setConnections(cachedConnections)
       registerByokModels(cachedConnections)
-      return
+      return () => {
+        listeners.delete(setConnections)
+      }
     }
     let active = true
     void loadConnections()
@@ -88,8 +110,9 @@ export function useByokModels() {
       })
     return () => {
       active = false
+      listeners.delete(setConnections)
     }
   }, [])
 
-  return { connections, isLoading, error, refresh }
+  return { connections, isLoading, error, refresh, updateConnection }
 }

@@ -66,6 +66,31 @@ interface DiscoveredModel {
   name?: string
 }
 
+const MODEL_TOKEN_LABELS: Record<string, string> = {
+  ai: 'AI',
+  api: 'API',
+  claude: 'Claude',
+  codegemma: 'CodeGemma',
+  deepseek: 'DeepSeek',
+  flash: 'Flash',
+  gemini: 'Gemini',
+  gemma: 'Gemma',
+  glm: 'GLM',
+  gpt: 'GPT',
+  grok: 'Grok',
+  instruct: 'Instruct',
+  kimi: 'Kimi',
+  llama: 'Llama',
+  maverick: 'Maverick',
+  minimax: 'MiniMax',
+  mistral: 'Mistral',
+  nemotron: 'Nemotron',
+  oss: 'OSS',
+  qwen: 'Qwen',
+  reasoning: 'Reasoning',
+  vl: 'VL',
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
 }
@@ -102,6 +127,35 @@ export function parseDiscoveredModels(json: string | undefined): DiscoveredModel
   }
 }
 
+function formatByokModelToken(token: string): string {
+  const normalized = token.toLowerCase()
+  const mapped = MODEL_TOKEN_LABELS[normalized]
+  if (mapped) return mapped
+  if (/^\d+(b|m|k)$/i.test(token)) return token.toUpperCase()
+  if (/^[a-z]\d+(?:\.\d+)*$/i.test(token)) return token.toUpperCase()
+  if (/^\d+(?:\.\d+)*[a-z]?$/i.test(token)) return token.toUpperCase()
+  return `${token.charAt(0).toUpperCase()}${token.slice(1)}`
+}
+
+/**
+ * Builds a human-readable label from provider slug IDs when `/models` does not
+ * return a real display name.
+ */
+export function formatByokModelDisplayName(rawModelId: string, discoveredName?: string): string {
+  const trimmedName = discoveredName?.trim()
+  const rawLeaf = rawModelId.split('/').pop() ?? rawModelId
+  if (trimmedName && trimmedName !== rawModelId && trimmedName !== rawLeaf) {
+    return trimmedName
+  }
+
+  return rawLeaf
+    .replace(/[:_]/g, '-')
+    .split('-')
+    .filter(Boolean)
+    .map(formatByokModelToken)
+    .join(' ')
+}
+
 /**
  * Converts a single BYOK connection into an array of {@link ChatModel} objects,
  * one per enabled model. Only models in `enabledModelIds` are included — the
@@ -121,7 +175,7 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
     const discovered = discoveredById.get(rawModelId)
     return {
       id: byokModelId(connection._id, rawModelId),
-      name: discovered?.name ?? rawModelId,
+      name: formatByokModelDisplayName(rawModelId, discovered?.name),
       provider: connection.displayName,
       intelligence: 0,
       cost: 1,

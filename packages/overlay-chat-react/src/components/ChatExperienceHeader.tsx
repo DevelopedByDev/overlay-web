@@ -227,8 +227,12 @@ export function ChatExperienceHeader({
   onVideoModelSelectionModeChange,
   selectableTextModels,
   textModelsLoading,
+  askModelSelectionMode,
   selectedActModel,
+  selectedModels,
   onToggleTextModel,
+  onTextModelSelectionModeChange,
+  hasAutomationContext,
 }: ChatExperienceHeaderProps) {
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
@@ -514,8 +518,11 @@ export function ChatExperienceHeader({
                               </button>
                             )
                           })
-                        : selectableTextModels.map((m, index, models) => {
-                            const isSel = m.id === selectedActModel
+                          : selectableTextModels.map((m, index, models) => {
+                            const isSel =
+                              askModelSelectionMode === 'multiple'
+                                ? selectedModels.includes(m.id)
+                                : m.id === selectedActModel
                             const isDisabled = false
                             const isFreeModelRow = isFreeTierChatModelId(m.id)
                             const previous = models[index - 1]
@@ -605,6 +612,33 @@ export function ChatExperienceHeader({
                               } ${
                                 isActiveLoading || (isFreeTier && selectionMode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
                               }`}
+                            >
+                              {selectionMode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                  {generationMode === 'text' ? (
+                    <div className="border-t border-[var(--border)] px-2 py-2">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+                        {(['single', 'multiple'] as const).map((selectionMode) => {
+                          const isActive = askModelSelectionMode === selectionMode
+                          const disabled =
+                            isActiveLoading ||
+                            (selectionMode === 'multiple' && (isFreeTier || hasAutomationContext))
+                          return (
+                            <button
+                              key={selectionMode}
+                              type="button"
+                              onClick={() => onTextModelSelectionModeChange(selectionMode)}
+                              disabled={disabled}
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                                isActive
+                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                              } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
                             >
                               {selectionMode}
                             </button>
