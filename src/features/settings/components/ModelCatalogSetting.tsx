@@ -113,7 +113,7 @@ export function ModelCatalogSetting({
             Drag to reorder. This is the order models appear in your chat dropdown.
           </p>
           <p className="mt-1 text-xs text-[var(--muted-light)]">
-            Enable or disable models from each provider&apos;s edit dialog in the Providers section.
+            Enable or disable provider models from the Providers section.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

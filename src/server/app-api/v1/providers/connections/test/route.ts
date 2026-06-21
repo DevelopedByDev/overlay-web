@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { convex } from '@/server/database/convex'
+import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
+import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { getByokPreset } from '@overlay/llm-gateway'
 
@@ -7,24 +11,57 @@ import { getByokPreset } from '@overlay/llm-gateway'
 // Tests a provider connection by fetching its model-discovery endpoint.
 // The API key is passed in the request body (not yet stored in Vault) so the
 // user can validate the connection before saving.
-export async function POST(request: NextRequest, _context: AppApiRouteContext) {
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json()
-    const { providerId, endpoint, apiKey } = body as Record<string, unknown>
+    const { connectionId, providerId, endpoint, apiKey } = body as Record<string, unknown>
+    const serverSecret = getInternalApiSecret()
 
-    if (!providerId || typeof providerId !== 'string') {
+    let resolvedProviderId = typeof providerId === 'string' ? providerId : ''
+    let resolvedEndpoint = typeof endpoint === 'string' && endpoint.trim() ? endpoint.trim() : ''
+    let resolvedApiKey = typeof apiKey === 'string' && apiKey.length > 0 ? apiKey : ''
+
+    if (typeof connectionId === 'string' && connectionId.trim()) {
+      const existing = await convex.query<{
+        userId: string
+        providerId: string
+        endpoint: string
+        vaultObjectId?: string
+        isDefault: boolean
+      } | null>(
+        'providers/connections:getByServer',
+        { serverSecret, connectionId },
+      )
+
+      if (!existing || existing.userId !== context.auth.userId) {
+        return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
+      }
+
+      if (existing.isDefault && existing.providerId === 'vercel-ai-gateway') {
+        const models = (await getGatewayLanguageCatalog(true)).map((model) => ({
+          id: model.id,
+          name: model.name,
+        }))
+        return NextResponse.json({ ok: true, models })
+      }
+
+      resolvedProviderId = existing.providerId
+      resolvedEndpoint = existing.endpoint
+      if (!resolvedApiKey && existing.vaultObjectId) {
+        resolvedApiKey = await readByokVaultKey(existing.vaultObjectId) ?? ''
+      }
+    }
+
+    if (!resolvedProviderId) {
       return NextResponse.json({ error: 'providerId is required' }, { status: 400 })
     }
 
-    const preset = getByokPreset(providerId)
+    const preset = getByokPreset(resolvedProviderId)
     if (!preset) {
-      return NextResponse.json({ error: `Unknown provider: ${providerId}` }, { status: 400 })
+      return NextResponse.json({ error: `Unknown provider: ${resolvedProviderId}` }, { status: 400 })
     }
 
-    const resolvedEndpoint =
-      typeof endpoint === 'string' && endpoint.trim()
-        ? endpoint.trim()
-        : preset.defaultBaseURL
+    resolvedEndpoint = resolvedEndpoint || preset.defaultBaseURL
 
     if (!resolvedEndpoint) {
       return NextResponse.json(
@@ -42,7 +79,7 @@ export async function POST(request: NextRequest, _context: AppApiRouteContext) {
       return NextResponse.json({ error: urlResult.error }, { status: 400 })
     }
 
-    if (preset.requiresApiKey && (!apiKey || typeof apiKey !== 'string')) {
+    if (preset.requiresApiKey && !resolvedApiKey) {
       return NextResponse.json(
         { error: `API key is required for ${preset.label}` },
         { status: 400 },
@@ -55,8 +92,8 @@ export async function POST(request: NextRequest, _context: AppApiRouteContext) {
       'Content-Type': 'application/json',
       ...preset.headers,
     }
-    if (typeof apiKey === 'string' && apiKey.length > 0) {
-      headers['Authorization'] = `Bearer ${apiKey}`
+    if (resolvedApiKey) {
+      headers['Authorization'] = `Bearer ${resolvedApiKey}`
     }
 
     const response = await fetch(discoveryUrl, {
