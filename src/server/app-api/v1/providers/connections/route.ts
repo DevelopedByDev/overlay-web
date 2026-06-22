@@ -19,6 +19,7 @@ import {
   resolveByokEndpointForCreate,
   resolveByokEndpointForPatch,
 } from '@/server/ai/gateway/byok-security'
+import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-provider-models'
 
 async function validateEndpointUrl(url: unknown): Promise<string | null> {
   const result = await validatePublicNetworkUrl(url, { allowLocalDev: false, requireHttps: true })
@@ -33,11 +34,13 @@ function sortConnections(connections: ByokConnectionRow[]): ByokConnectionRow[] 
 }
 
 function defaultGatewayNeedsSeed(connections: readonly ByokConnectionRow[]): boolean {
+  const preset = getByokPreset(DEFAULT_GATEWAY_PROVIDER_ID)
   const existing = connections.find(
     (connection) => connection.providerId === DEFAULT_GATEWAY_PROVIDER_ID && connection.isDefault,
   )
   if (!existing) return true
   return (
+    (preset ? existing.displayName !== preset.label : false) ||
     existing.enabledModelIds.length === 0 ||
     !existing.discoveredModelsJson ||
     !byokEndpointMatchesPreset(DEFAULT_GATEWAY_PROVIDER_ID, existing.endpoint)
@@ -55,10 +58,7 @@ async function ensureDefaultGatewayConnection(
   if (!preset) return [...connections]
 
   const gatewayModels = await getGatewayLanguageCatalog().catch((_error) => [])
-  const discoveredModels = gatewayModels.map((model) => ({
-    id: model.id,
-    name: model.name,
-  }))
+  const discoveredModels = overlayProviderDiscoveryModels(gatewayModels)
   const seeded = await convex.mutation<ByokConnectionRow>(
     'providers/connections:ensureDefaultGatewayByServer',
     {

@@ -104,7 +104,7 @@ export async function getLanguageModel(
     return model.implementation as LanguageModelV3
   }
 
-  // Existing path: Overlay-hosted gateway (Vercel AI Gateway default connection)
+  // Existing path: Overlay-hosted gateway models.
   const model = await getOverlayServerContext().llmGateway.createLanguageModel(
     modelId,
     { accessToken },

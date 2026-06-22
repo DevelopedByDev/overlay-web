@@ -6,6 +6,7 @@ import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { getByokPreset } from '@overlay/llm-gateway'
+import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-provider-models'
 
 // POST /api/v1/providers/connections/test
 // Tests a provider connection by fetching its model-discovery endpoint.
@@ -38,10 +39,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
 
       if (existing.isDefault && existing.providerId === 'vercel-ai-gateway') {
-        const models = (await getGatewayLanguageCatalog(true)).map((model) => ({
-          id: model.id,
-          name: model.name,
-        }))
+        const models = overlayProviderDiscoveryModels(await getGatewayLanguageCatalog(true))
         return NextResponse.json({ ok: true, models })
       }
 

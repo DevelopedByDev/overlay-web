@@ -205,8 +205,8 @@ export async function readByokVaultKey(vaultObjectId: string): Promise<string | 
 
 /**
  * Reads a BYOK API key from the vault by its key name (falls back to env var).
- * Used when only the vaultKeyName is known (e.g. default Vercel AI Gateway
- * connection that may use a user-supplied key or the server-hosted key).
+ * Used when only the vaultKeyName is known. Hosted Overlay gateway keys are
+ * intentionally not resolved through BYOK runtime paths.
  */
 export async function readByokVaultKeyByName(vaultKeyName: string): Promise<string | null> {
   const apiKey = process.env.WORKOS_API_KEY?.trim()

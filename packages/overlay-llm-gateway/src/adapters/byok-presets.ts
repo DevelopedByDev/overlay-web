@@ -7,8 +7,8 @@
  * {@link ByokGateway} is constructed per user connection with the user's API
  * key and (optionally) a custom endpoint URL.
  *
- * The Vercel AI Gateway preset is special: it is pre-seeded for every user,
- * cannot be deleted, and uses Overlay's hosted key through the hosted gateway
+ * The Overlay preset is special: it is pre-seeded for every user,
+ * cannot be deleted, and uses Overlay's hosted gateway key through the hosted gateway
  * runtime path. Users who want to bring their own Vercel AI Gateway key use
  * the separate `user-vercel-ai-gateway` preset below.
  *
@@ -46,7 +46,7 @@ export interface ByokProviderPreset {
 export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
   {
     id: 'vercel-ai-gateway',
-    label: 'Vercel AI Gateway',
+    label: 'Overlay',
     defaultBaseURL: 'https://ai-gateway.vercel.sh/v1',
     discoveryPath: '/models',
     discoveryShape: 'openai',
@@ -58,7 +58,7 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
   },
   {
     id: 'user-vercel-ai-gateway',
-    label: 'User Vercel AI Gateway',
+    label: 'Vercel AI Gateway',
     defaultBaseURL: 'https://ai-gateway.vercel.sh/v1',
     discoveryPath: '/models',
     discoveryShape: 'openai',

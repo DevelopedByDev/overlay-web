@@ -14,7 +14,7 @@ import {
   type ByokConnectionRow,
 } from '@/shared/ai/gateway/byok-model-conversion'
 
-const SPECIAL_CHAT_MODELS: ChatModel[] = [
+export const OVERLAY_FREE_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'openrouter/moonshotai/kimi-k2.6:free', name: 'Free: Kimi K2.6', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'openrouter/z-ai/glm-4.5-air:free', name: 'Free: GLM 4.5 Air', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
@@ -40,10 +40,10 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
   'z-ai/glm-5.1',
   'qwen/qwen3.6-plus',
   'openai/gpt-oss-120b',
-  ...SPECIAL_CHAT_MODELS.map((model) => model.id),
+  ...OVERLAY_FREE_CHAT_MODELS.map((model) => model.id),
 ] as const
 
-export const AVAILABLE_MODELS: ChatModel[] = [...SPECIAL_CHAT_MODELS]
+export const AVAILABLE_MODELS: ChatModel[] = [...OVERLAY_FREE_CHAT_MODELS]
 
 const gatewayCatalogModels = new Map<string, ChatModel>()
 const ZDR_MODEL_IDS = new Set([
@@ -59,7 +59,7 @@ const ZDR_MODEL_IDS = new Set([
 export function registerGatewayCatalogModels(models: readonly GatewayCatalogModel[]): void {
   const registered: ChatModel[] = []
   for (const model of models) {
-    if (model.type !== 'language' || SPECIAL_CHAT_MODELS.some((special) => special.id === model.id)) continue
+    if (model.type !== 'language' || OVERLAY_FREE_CHAT_MODELS.some((special) => special.id === model.id)) continue
     const chatModel = gatewayCatalogModelToChatModel(model)
     chatModel.supportsZeroDataRetention = ZDR_MODEL_IDS.has(chatModel.id)
     chatModel.intelligence = Math.max(0, 100 - (CHAT_MODEL_QUALITY_PRIORITY.indexOf(chatModel.id) + 1))
@@ -101,7 +101,7 @@ function getGatewayRegisteredModels(): ChatModel[] {
  */
 function rebuildAvailableModels(gatewayModels: ChatModel[]): void {
   const byokList = Array.from(byokModels.values())
-  AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...gatewayModels, ...SPECIAL_CHAT_MODELS, ...byokList)
+  AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...gatewayModels, ...OVERLAY_FREE_CHAT_MODELS, ...byokList)
 }
 
 /**

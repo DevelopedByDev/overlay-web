@@ -122,7 +122,7 @@ export function assertByokRuntimeConnectionAllowed(
   rawModelId: string,
 ): void {
   if (connection.isDefault || connection.providerId === DEFAULT_GATEWAY_PROVIDER_ID) {
-    throw new Error('The default Vercel AI Gateway connection cannot be used through BYOK model IDs.')
+    throw new Error('The default Overlay connection cannot be used through BYOK model IDs.')
   }
 
   if (connection.status !== 'active') {

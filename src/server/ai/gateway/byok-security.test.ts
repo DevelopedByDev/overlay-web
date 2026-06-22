@@ -23,7 +23,7 @@ test('normalizes endpoint trailing slashes for comparisons', () => {
   assert.equal(byokEndpointMatchesPreset('openrouter', 'https://openrouter.ai/api/v1/'), true)
 })
 
-test('create rejects managed default Vercel AI Gateway provider', () => {
+test('create rejects managed default Overlay provider', () => {
   const result = resolveByokEndpointForCreate(DEFAULT_GATEWAY_PROVIDER_ID, 'https://ai-gateway.vercel.sh/v1')
   assert.equal(result.ok, false)
   if (!result.ok) {
@@ -46,12 +46,12 @@ test('create allows preset-locked providers only at their default endpoint', () 
   assert.deepEqual(result, { ok: true, endpoint: 'https://openrouter.ai/api/v1' })
 })
 
-test('create allows user Vercel AI Gateway at the locked Vercel endpoint', () => {
+test('create allows Vercel AI Gateway BYOK at the locked Vercel endpoint', () => {
   const result = resolveByokEndpointForCreate('user-vercel-ai-gateway', undefined)
   assert.deepEqual(result, { ok: true, endpoint: 'https://ai-gateway.vercel.sh/v1' })
 })
 
-test('create rejects custom endpoints for user Vercel AI Gateway', () => {
+test('create rejects custom endpoints for Vercel AI Gateway BYOK', () => {
   const result = resolveByokEndpointForCreate('user-vercel-ai-gateway', 'https://attacker.example/v1')
   assert.equal(result.ok, false)
   if (!result.ok) {
@@ -83,7 +83,7 @@ test('patch accepts custom provider endpoint updates', () => {
   assert.deepEqual(result, { ok: true, endpoint: 'https://models.example.com/v1' })
 })
 
-test('runtime rejects hosted default gateway BYOK model ids', () => {
+test('runtime rejects hosted default Overlay BYOK model ids', () => {
   assert.throws(
     () => assertByokRuntimeConnectionAllowed({
       providerId: DEFAULT_GATEWAY_PROVIDER_ID,
@@ -92,7 +92,7 @@ test('runtime rejects hosted default gateway BYOK model ids', () => {
       isDefault: true,
       status: 'active',
     }, 'openai/gpt-5.4'),
-    /default Vercel AI Gateway connection cannot be used through BYOK/,
+    /default Overlay connection cannot be used through BYOK/,
   )
 })
 
@@ -133,7 +133,7 @@ test('runtime allows active custom provider enabled models', () => {
   }, 'z-ai/glm-5.2'))
 })
 
-test('runtime allows active user Vercel AI Gateway enabled models at the locked endpoint', () => {
+test('runtime allows active Vercel AI Gateway BYOK enabled models at the locked endpoint', () => {
   assert.doesNotThrow(() => assertByokRuntimeConnectionAllowed({
     providerId: 'user-vercel-ai-gateway',
     endpoint: 'https://ai-gateway.vercel.sh/v1',
@@ -143,7 +143,7 @@ test('runtime allows active user Vercel AI Gateway enabled models at the locked 
   }, 'openai/gpt-5.4'))
 })
 
-test('runtime rejects user Vercel AI Gateway models at non-Vercel endpoints', () => {
+test('runtime rejects Vercel AI Gateway BYOK models at non-Vercel endpoints', () => {
   assert.throws(
     () => assertByokRuntimeConnectionAllowed({
       providerId: 'user-vercel-ai-gateway',

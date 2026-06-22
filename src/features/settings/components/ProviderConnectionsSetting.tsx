@@ -26,7 +26,11 @@ import {
   getByokPreset,
 } from '@overlay/llm-gateway'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
-import { DEFAULT_CURATED_CHAT_MODEL_IDS } from '@/shared/ai/gateway/model-data'
+import {
+  DEFAULT_CURATED_CHAT_MODEL_IDS,
+  OVERLAY_FREE_CHAT_MODELS,
+} from '@/shared/ai/gateway/model-data'
+import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   byokModelId,
@@ -120,14 +124,38 @@ function gatewayModelToOption(model: GatewayCatalogModel): ProviderModelOption |
   }
 }
 
+function freeChatModelToOption(model: ChatModel): ProviderModelOption {
+  return {
+    rawId: model.id,
+    appModelId: model.id,
+    name: model.name,
+    provider: model.provider,
+    supportsVision: model.supportsVision,
+    supportsReasoning: model.supportsReasoning,
+    inputPricePerMillion: 0,
+    outputPricePerMillion: 0,
+    isDefault: DEFAULT_CURATED_CHAT_MODEL_IDS.includes(model.id as typeof DEFAULT_CURATED_CHAT_MODEL_IDS[number]),
+  }
+}
+
 function buildProviderModelOptions(
   connection: ByokConnectionRow,
   gatewayModels: readonly GatewayCatalogModel[],
 ): ProviderModelOption[] {
-  if (isDefaultGatewayConnection(connection) && gatewayModels.length > 0) {
-    return gatewayModels
-      .map(gatewayModelToOption)
-      .filter((model): model is ProviderModelOption => Boolean(model))
+  if (isDefaultGatewayConnection(connection)) {
+    const options = [
+      ...gatewayModels
+        .map(gatewayModelToOption)
+        .filter((model): model is ProviderModelOption => Boolean(model)),
+      ...OVERLAY_FREE_CHAT_MODELS.map(freeChatModelToOption),
+    ]
+    const seen = new Set<string>()
+    return options
+      .filter((model) => {
+        if (seen.has(model.appModelId)) return false
+        seen.add(model.appModelId)
+        return true
+      })
       .sort((a, b) => (a.provider ?? '').localeCompare(b.provider ?? '') || a.name.localeCompare(b.name))
   }
 

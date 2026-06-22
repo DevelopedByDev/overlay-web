@@ -15,9 +15,8 @@ export interface ByokConnection {
 }
 
 /**
- * Resolved API key for a BYOK connection. For the default Vercel AI Gateway
- * connection with no user-supplied key, the caller resolves the hosted key
- * from WorkOS Vault / env and passes it here.
+ * Resolved API key for a BYOK connection. Managed Overlay-hosted gateway keys
+ * are not passed through this BYOK adapter.
  */
 export interface ByokGatewayOptions {
   connection: ByokConnection
