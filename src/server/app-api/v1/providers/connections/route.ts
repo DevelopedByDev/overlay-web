@@ -13,8 +13,12 @@ import {
 } from '@/server/ai/gateway/byok-vault'
 import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { getByokPreset } from '@overlay/llm-gateway'
-
-const DEFAULT_GATEWAY_PROVIDER_ID = 'vercel-ai-gateway'
+import {
+  DEFAULT_GATEWAY_PROVIDER_ID,
+  byokEndpointMatchesPreset,
+  resolveByokEndpointForCreate,
+  resolveByokEndpointForPatch,
+} from '@/server/ai/gateway/byok-security'
 
 async function validateEndpointUrl(url: unknown): Promise<string | null> {
   const result = await validatePublicNetworkUrl(url, { allowLocalDev: false, requireHttps: true })
@@ -33,7 +37,11 @@ function defaultGatewayNeedsSeed(connections: readonly ByokConnectionRow[]): boo
     (connection) => connection.providerId === DEFAULT_GATEWAY_PROVIDER_ID && connection.isDefault,
   )
   if (!existing) return true
-  return existing.enabledModelIds.length === 0 || !existing.discoveredModelsJson
+  return (
+    existing.enabledModelIds.length === 0 ||
+    !existing.discoveredModelsJson ||
+    !byokEndpointMatchesPreset(DEFAULT_GATEWAY_PROVIDER_ID, existing.endpoint)
+  )
 }
 
 async function ensureDefaultGatewayConnection(
@@ -137,18 +145,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: `Unknown provider: ${providerId}` }, { status: 400 })
     }
 
-    // Resolve endpoint: use the provided value, or fall back to the preset default
-    const resolvedEndpoint =
-      typeof endpoint === 'string' && endpoint.trim()
-        ? endpoint.trim()
-        : preset.defaultBaseURL
-
-    if (!resolvedEndpoint) {
+    const endpointResolution = resolveByokEndpointForCreate(providerId, endpoint)
+    if (!endpointResolution.ok) {
       return NextResponse.json(
-        { error: 'endpoint is required for custom providers' },
-        { status: 400 },
+        { error: endpointResolution.error },
+        { status: endpointResolution.status },
       )
     }
+    const resolvedEndpoint = endpointResolution.endpoint
 
     // Validate the endpoint URL (SSRF protection)
     const urlError = await validateEndpointUrl(resolvedEndpoint)
@@ -238,7 +242,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId: string
       vaultObjectId?: string
       providerId: string
+      endpoint: string
       displayName?: string
+      isDefault: boolean
     } | null>(
       'providers/connections:getByServer',
       { serverSecret, connectionId },
@@ -275,9 +281,21 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       }
     }
 
+    const endpointResolution = resolveByokEndpointForPatch(
+      existing.providerId,
+      endpoint,
+      { isDefault: existing.isDefault },
+    )
+    if (!endpointResolution.ok) {
+      return NextResponse.json(
+        { error: endpointResolution.error },
+        { status: endpointResolution.status },
+      )
+    }
+
     // Validate endpoint if it's being updated
-    if (typeof endpoint === 'string' && endpoint.trim()) {
-      const urlError = await validateEndpointUrl(endpoint)
+    if (endpointResolution.endpoint !== undefined) {
+      const urlError = await validateEndpointUrl(endpointResolution.endpoint)
       if (urlError) {
         return NextResponse.json({ error: urlError }, { status: 400 })
       }
@@ -287,7 +305,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
       connectionId,
       ...(displayName !== undefined ? { displayName } : {}),
-      ...(endpoint !== undefined ? { endpoint } : {}),
+      ...(endpointResolution.endpoint !== undefined ? { endpoint: endpointResolution.endpoint } : {}),
       ...(vaultObjectId !== undefined ? { vaultObjectId } : {}),
       ...(Array.isArray(enabledModelIds) ? { enabledModelIds } : {}),
       ...(discoveredModelsJson !== undefined ? { discoveredModelsJson } : {}),

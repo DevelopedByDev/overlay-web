@@ -8,8 +8,9 @@
  * key and (optionally) a custom endpoint URL.
  *
  * The Vercel AI Gateway preset is special: it is pre-seeded for every user,
- * cannot be deleted, and uses Overlay's hosted key by default. A user may
- * optionally provide their own AI Gateway key to override it.
+ * cannot be deleted, and uses Overlay's hosted key through the hosted gateway
+ * runtime path. Users who want to bring their own Vercel AI Gateway key use
+ * the separate `user-vercel-ai-gateway` preset below.
  *
  * Local Ollama support is postponed to a future phase — only cloud providers
  * are included here.
@@ -53,6 +54,18 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     allowsCustomEndpoint: false,
     isDefault: true,
     isDeletable: false,
+    docsURL: 'https://vercel.com/docs/ai-gateway',
+  },
+  {
+    id: 'user-vercel-ai-gateway',
+    label: 'User Vercel AI Gateway',
+    defaultBaseURL: 'https://ai-gateway.vercel.sh/v1',
+    discoveryPath: '/models',
+    discoveryShape: 'openai',
+    requiresApiKey: true,
+    allowsCustomEndpoint: false,
+    isDefault: false,
+    isDeletable: true,
     docsURL: 'https://vercel.com/docs/ai-gateway',
   },
   {

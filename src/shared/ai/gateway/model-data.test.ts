@@ -104,3 +104,22 @@ test('default Vercel AI Gateway row does not create BYOK duplicate models', () =
 
   assert.deepEqual(models, [])
 })
+
+test('user Vercel AI Gateway row creates BYOK models alongside hosted models', () => {
+  const models = byokConnectionsToChatModels([{
+    _id: 'user-gateway-connection',
+    providerId: 'user-vercel-ai-gateway',
+    endpoint: 'https://ai-gateway.vercel.sh/v1',
+    displayName: 'User Vercel AI Gateway',
+    enabledModelIds: ['openai/gpt-5.4'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'openai/gpt-5.4', name: 'GPT 5.4' }] }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+
+  assert.equal(models.length, 1)
+  assert.equal(models[0]?.id, 'byok/user-gateway-connection/openai/gpt-5.4')
+  assert.equal(models[0]?.name, 'GPT 5.4')
+  assert.equal(models[0]?.provider, 'User Vercel AI Gateway')
+})

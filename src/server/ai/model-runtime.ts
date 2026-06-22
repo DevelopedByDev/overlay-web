@@ -20,8 +20,8 @@ import {
 import { ByokGateway, type ByokConnection } from '@overlay/llm-gateway'
 import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
-import { readByokVaultKey, readByokVaultKeyByName } from '@/server/ai/gateway/byok-vault'
+import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
+import { assertByokRuntimeConnectionAllowed } from '@/server/ai/gateway/byok-security'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 
 const BYOK_MODEL_PREFIX = 'byok/'
@@ -31,8 +31,8 @@ interface ByokConnectionRow {
   userId: string
   providerId: string
   endpoint: string
-  vaultKeyName: string
   vaultObjectId?: string
+  enabledModelIds: string[]
   isDefault: boolean
   status: string
 }
@@ -62,25 +62,12 @@ async function getUserProviderConnection(
 /**
  * Resolves the API key for a BYOK connection.
  *
- * - If the connection has a vaultObjectId, read the key from WorkOS Vault by ID.
- * - If the connection has a vaultKeyName (but no object ID), read by name with
- *   env-var fallback (used by the default Vercel AI Gateway connection).
- * - If neither is set, fall back to the server-hosted key for the provider
- *   (e.g. Overlay's AI_GATEWAY_API_KEY for the default connection).
+ * Only user-owned Vault object ids are honored here. Hosted gateway keys are
+ * intentionally not available through BYOK model IDs.
  */
 async function resolveByokApiKey(connection: ByokConnectionRow): Promise<string | null> {
   if (connection.vaultObjectId) {
     return await readByokVaultKey(connection.vaultObjectId)
-  }
-
-  if (connection.vaultKeyName) {
-    return await readByokVaultKeyByName(connection.vaultKeyName)
-  }
-
-  // Default Vercel AI Gateway connection with no user-supplied key — use
-  // the server-hosted key.
-  if (connection.providerId === 'vercel-ai-gateway') {
-    return await getServerProviderKey('ai_gateway')
   }
 
   return null
@@ -105,6 +92,7 @@ export async function getLanguageModel(
     if (!connection) {
       throw new Error(`BYOK connection not found: ${connectionId}`)
     }
+    assertByokRuntimeConnectionAllowed(connection, rawModelId)
 
     const apiKey = await resolveByokApiKey(connection)
     const byokConnection: ByokConnection = {
