@@ -358,13 +358,22 @@ function isHeavyMath(s: string): boolean {
 }
 
 function looksLikeMath(s: string): boolean {
-  return (
+  if (
     TEX_COMMAND.test(s) ||
     TEX_HINT.test(s) ||
     BIG_O_ATOM.test(s) ||
-    looksLikeMathVariable(s) ||
-    /[A-Za-z0-9)]\s*[=+\-*/×]\s*[A-Za-z0-9(]/.test(s)
-  )
+    looksLikeMathVariable(s)
+  ) {
+    return true
+  }
+  // Detect compact numeric/symbolic equations. Be stricter with slash/hyphen so
+  // prose like `$0.25 / seat` or `$2-4` is not mistaken for math.
+  const hasEquation =
+    /[A-Za-z0-9)]\s*[=+×*]\s*[A-Za-z0-9(]/.test(s) ||
+    /[A-Za-z)]\s*[-]\s*[A-Za-z(]/.test(s) ||
+    /[A-Za-z)]-[A-Za-z(]/.test(s) ||
+    /[A-Za-z0-9)]\/[A-Za-z0-9(]/.test(s)
+  return hasEquation
 }
 
 function looksLikeProse(s: string): boolean {
@@ -401,7 +410,22 @@ export function normalizeBareLatexLines(text: string): string {
       continue
     }
 
-    if (inFence || inDisplayMath || !shouldPromoteBareLatexLine(line)) {
+    if (inFence || inDisplayMath) {
+      out.push(line)
+      continue
+    }
+
+    if (trimmed.startsWith('|')) {
+      const promoted = promoteBareLatexInTableRow(line)
+      if (promoted !== line) {
+        out.push(promoted)
+        continue
+      }
+      out.push(line)
+      continue
+    }
+
+    if (!shouldPromoteBareLatexLine(line)) {
       out.push(line)
       continue
     }
@@ -425,9 +449,15 @@ function shouldPromoteBareLatexLine(line: string): boolean {
   const hasSubscriptEquation =
     /(?:^|[\s(:;])(?:[A-Za-zΑ-Ωα-ω]|\\[A-Za-z]+)_\{?[^=\s;)]{1,40}\}?\s*=/.test(withoutInlineMath)
   const hasCommandEquation = /\\[A-Za-z@]+(?:\{[^}\n]*\})?\s*=/.test(withoutInlineMath)
+  const hasEquationAfterCommand = /=\s*\\[\$A-Za-z@]+(?:\{[^}\n]*\})?/.test(withoutInlineMath)
   const hasMatrix = /\\begin\{[a-zA-Z*]+matrix\}/.test(withoutInlineMath)
 
-  return hasMatrix || hasDisplayCommand || hasSubscriptEquation || (hasTexCommand && hasCommandEquation)
+  return (
+    hasMatrix ||
+    hasDisplayCommand ||
+    hasSubscriptEquation ||
+    (hasTexCommand && (hasCommandEquation || hasEquationAfterCommand))
+  )
 }
 
 function stripInlineMathSpans(text: string): string {
@@ -436,15 +466,48 @@ function stripInlineMathSpans(text: string): string {
 
 function promoteBareLatexLine(line: string): string[] {
   const start = findBareLatexStart(line)
+  let math = line.slice(start < 0 ? 0 : start).trim()
+  // Strip a stray trailing closing $ so the display fence doesn't include a dangling
+  // delimiter left over from a malformed model attempt at inline math.
+  if (math.endsWith('$') && !math.endsWith('\\$')) {
+    math = math.slice(0, -1)
+  }
+  math = normalizeLatexBody(math)
   if (start <= 0) {
-    return ['', '$$', normalizeLatexBody(line.trim()), '$$', '']
+    return ['', '$$', math, '$$', '']
   }
 
   const prefix = line.slice(0, start).trimEnd()
-  const math = normalizeLatexBody(line.slice(start).trim())
   if (!prefix) return ['', '$$', math, '$$', '']
 
   return [prefix, '', '$$', math, '$$', '']
+}
+
+/**
+ * Promote bare LaTeX inside markdown table cells. Table rows must stay inline,
+ * so we wrap only the cell content in `$...$` rather than using display fences.
+ */
+function promoteBareLatexInTableRow(line: string): string {
+  const cells = line.split('|')
+  const promoted = cells.map((cell, index) => {
+    // First and last cells are empty because markdown table rows start/end with `|`.
+    if (index === 0 || index === cells.length - 1) return cell
+    const trimmed = cell.trim()
+    if (!trimmed || !shouldPromoteBareLatexLine(trimmed)) return cell
+    const start = findBareLatexStart(trimmed)
+    const prefix = start > 0 ? trimmed.slice(0, start).trimEnd() : ''
+    let math = start > 0 ? trimmed.slice(start).trim() : trimmed
+    // If the bare math already ends with a stray closing $, pair it with a leading $.
+    if (math.endsWith('$') && !math.endsWith('\\$')) {
+      math = math.slice(0, -1)
+    }
+    const wrapped = `$${normalizeLatexBody(math)}$`
+    if (prefix) {
+      return ` ${prefix} ${wrapped} `
+    }
+    return ` ${wrapped} `
+  })
+  return promoted.join('|')
 }
 
 function findBareLatexStart(line: string): number {
@@ -543,13 +606,19 @@ function processProseRegion(text: string): string {
   return text.replace(
     /(?<![\\$])\$(?!\$)([^$\n]{1,400}?)\$(?!\$)/g,
     (match, inner: string, offset: number, full: string) => {
-      if (!isLikelyCurrencyProseSpan(match, inner, offset, full) && looksLikeMath(inner.trim())) {
+      // If the span contains any TeX hint, keep it as real math even when it also
+      // contains currency-like numbers. Models often write finance examples like
+      // `$1.1000 \times 100{,}000 = \$110{,}000$` where the whole span is math.
+      if (looksLikeMath(inner.trim())) {
         return match
       }
-      // No math hints — the pair was almost certainly prose accidentally wrapped (most
-      // commonly currency in financial answers). Escape both delimiters so remark-math
-      // leaves them as literal `$` characters.
-      return `\\$${inner}\\$`
+      if (isLikelyCurrencyProseSpan(match, inner, offset, full)) {
+        // No math hints — the pair was almost certainly prose accidentally wrapped (most
+        // commonly currency in financial answers). Escape both delimiters so remark-math
+        // leaves them as literal `$` characters.
+        return `\\$${inner}\\$`
+      }
+      return match
     },
   )
 }

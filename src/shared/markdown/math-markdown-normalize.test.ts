@@ -96,3 +96,37 @@ test('normalizeAssistantMathMarkdown runs delimiter + promotion', () => {
   const out = normalizeAssistantMathMarkdown(input)
   assert.equal(out, 'eq $x + y$')
 })
+
+// Regression: finance examples with TeX commands inside must stay math, not be escaped as currency.
+test('keeps TeX-heavy currency-looking math as math', () => {
+  assert.equal(
+    normalizeAssistantMathMarkdown('$1.1000 \\times 100{,}000 = \\$110{,}000$'),
+    '$1.1000 \\times 100{,}000 = \\$110{,}000$',
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('$N = 1.1000 \\times 100{,}000 = \\$110{,}000$'),
+    '$N = 1.1000 \\times 100{,}000 = \\$110{,}000$',
+  )
+})
+
+// Regression: plain prose with currency/pseudo-math still gets escaped.
+test('still escapes currency spans without TeX commands', () => {
+  assert.equal(
+    normalizeAssistantMathMarkdown('Charge $0.25 / seat / month. Use a base $2-4 per user.'),
+    'Charge \\$0.25 / seat / month. Use a base \\$2-4 per user.',
+  )
+})
+
+// Regression: bare LaTeX in markdown table cells gets promoted.
+test('promotes bare LaTeX inside markdown table cells', () => {
+  const input = '| N | Notional | \\frac{110{,}000}{100} = \\$1{,}100$ |'
+  const out = normalizeAssistantMathMarkdown(input)
+  assert.equal(out, '| N | Notional | $\\frac{110{,}000}{100} = \\$1{,}100$ |')
+})
+
+// Regression: bare formula lines with command after equals get display fences.
+test('promotes bare formula line with command after equals', () => {
+  const input = '1\\% \\times 110{,}000 = \\$1{,}100$'
+  const out = normalizeAssistantMathMarkdown(input)
+  assert.equal(out, '\n\$$\n1\\% \\times 110{,}000 = \\$1{,}100\n$$\n')
+})
