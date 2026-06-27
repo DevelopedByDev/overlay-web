@@ -1,5 +1,5 @@
 import 'katex/dist/katex.min.css'
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
@@ -14,6 +14,7 @@ import { appendStreamMarker, normalizeGeneratedMarkdown } from './markdown/norma
 import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
+import { recordRender, timeSync } from '../lib/perf-debug'
 
 interface Props {
   text: string
@@ -47,7 +48,7 @@ interface Props {
   ) => void
 }
 
-export function MarkdownMessage({
+function MarkdownMessageImpl({
   text,
   isStreaming,
   sourceCitations,
@@ -57,19 +58,22 @@ export function MarkdownMessage({
   appBaseUrl = null,
   onOpenAttachmentPreview,
 }: Props) {
+  recordRender(isStreaming ? 'MarkdownMessage(streaming)' : 'MarkdownMessage')
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
   const normalizedDisplay = useMemo(
     () =>
-      normalizeGeneratedMarkdown(text, {
-        sourceCitations,
-        appBaseUrl,
-        linkifyCitations: !isStreaming && hasCitationMap,
-        webSources,
-        // Linkify web citations even while streaming so inline chips render with the text,
-        // instead of appearing only after completion.
-        linkifyWebCitations: hasWebSources,
-      }),
+      timeSync('normalizeGeneratedMarkdown', () =>
+        normalizeGeneratedMarkdown(text, {
+          sourceCitations,
+          appBaseUrl,
+          linkifyCitations: !isStreaming && hasCitationMap,
+          webSources,
+          // Linkify web citations even while streaming so inline chips render with the text,
+          // instead of appearing only after completion.
+          linkifyWebCitations: hasWebSources,
+        }),
+      ),
     [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources, appBaseUrl],
   )
 
@@ -271,3 +275,44 @@ export function MarkdownMessage({
     </div>
   )
 }
+
+function sameWebSources(a?: WebSourceItem[], b?: WebSourceItem[]): boolean {
+  if (a === b) return true
+  const al = a?.length ?? 0
+  const bl = b?.length ?? 0
+  if (al !== bl) return false
+  for (let i = 0; i < al; i++) {
+    if (a![i]!.url !== b![i]!.url) return false
+  }
+  return true
+}
+
+function sameCitations(a?: SourceCitationMap, b?: SourceCitationMap): boolean {
+  if (a === b) return true
+  const ak = a ? Object.keys(a) : []
+  const bk = b ? Object.keys(b) : []
+  if (ak.length !== bk.length) return false
+  for (const k of ak) {
+    if (!b || !(k in b)) return false
+  }
+  return true
+}
+
+/**
+ * Memoized so a completed message never re-parses its markdown/KaTeX when an unrelated
+ * message streams. Comparison is value-based for `webSources` / `sourceCitations`
+ * (their identities change every parent render); `onOpenAttachmentPreview` identity is
+ * intentionally ignored since its behavior is stable. While a message is actively
+ * streaming, `text` changes each (throttled) update so it still re-renders normally.
+ */
+export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
+  return (
+    prev.text === next.text &&
+    prev.isStreaming === next.isStreaming &&
+    prev.streamingMode === next.streamingMode &&
+    prev.suppressTypingIndicator === next.suppressTypingIndicator &&
+    prev.appBaseUrl === next.appBaseUrl &&
+    sameCitations(prev.sourceCitations, next.sourceCitations) &&
+    sameWebSources(prev.webSources, next.webSources)
+  )
+})

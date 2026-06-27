@@ -1,4 +1,5 @@
 import { useEffect,useLayoutEffect,useRef,useState } from 'react'
+import { recordRender } from '../../lib/perf-debug'
 
 export function useSmoothStreamedText(
   targetText: string,
@@ -48,9 +49,11 @@ export function useSmoothStreamedText(
         const next = target.slice(0, nextLen)
         displayRef.current = next
         setDisplay(next)
+        recordRender('smoothPacer.setDisplay')
       }
 
       lastTs = now
+      recordRender('smoothPacer.tick')
       rafId = requestAnimationFrame(tick)
     }
 

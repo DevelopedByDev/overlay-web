@@ -1,4 +1,8 @@
 /**
+ * Portable copy of the app's `src/shared/markdown/math-markdown-normalize.ts` so the
+ * standalone @overlay/chat-react renderer can defuse currency/pseudo-math before
+ * remark-math runs. Keep the two in sync.
+ *
  * Post-process assistant markdown so KaTeX (remark-math) sees math. Weak models often use
  * `[ ... ]` or `( ... )` around TeX instead of `$$...$$`, which does not render.
  *

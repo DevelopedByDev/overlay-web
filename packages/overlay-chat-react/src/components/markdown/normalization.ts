@@ -1,5 +1,6 @@
 import { stripThinkingPlaceholderMarkdown } from '../../lib/agent-assistant-text'
 import { mergeGfmTableContinuationLines } from '../../lib/markdown-table-fix'
+import { normalizeAssistantMathMarkdown } from '../../lib/math-markdown-normalize'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import { linkifyInlineWebCitations,type WebSourceItem } from '../../lib/web-sources'
 
@@ -105,6 +106,9 @@ export function normalizeGeneratedMarkdown(
 ): string {
   let t = mergeGfmTableContinuationLines(stripHtmlishToMarkdown(stripThinkingPlaceholderMarkdown(text)))
   t = bracketNormalize(t)
+  // Defuse prose pseudo-math (currency like `$8,000 ... $57,600`) and recover real
+  // TeX delimiters before remark-math runs, so currency is not italicized as math.
+  t = normalizeAssistantMathMarkdown(t)
   const hasKnowledgeCitations =
     !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
   const hasWebSources = !!(options?.webSources && options.webSources.length > 0)

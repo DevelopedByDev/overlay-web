@@ -12,6 +12,7 @@ import {
 import type { SourceCitationMap } from '../lib/source-citations'
 import type { WebSourceItem } from '../lib/web-sources'
 import { MarkdownMessage } from './MarkdownMessage'
+import { recordRender } from '../lib/perf-debug'
 import { FlashCopyIconButton } from './DraftReviewModal'
 import type {
   AttachmentPreview,
@@ -101,6 +102,7 @@ export function ExchangeBlock({
   onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange,
 }: ExchangeBlockProps) {
+    recordRender(isStreaming ? 'ExchangeBlock(streaming)' : 'ExchangeBlock')
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = (() => {

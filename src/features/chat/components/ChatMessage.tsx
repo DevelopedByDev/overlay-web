@@ -1,7 +1,7 @@
 'use client'
 
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, memo, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -29,6 +29,7 @@ import {
   splitUserDisplayText,
 } from '@overlay/chat-core'
 import type { DraftModalState } from './chat-interface/types'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'
 
@@ -76,11 +77,56 @@ type TextChatMessageProps = CommonMessageProps & {
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
 
 export function ChatMessage(props: ChatMessageProps) {
-  if (props.kind === 'text') return <TextChatMessage {...props} />
+  if (props.kind === 'text') return <MemoTextChatMessage {...props} />
   return <ChatMediaMessage {...props} />
 }
 
+const MemoTextChatMessage = memo(TextChatMessage, areTextChatMessagePropsEqual)
+
+function sameStringArray(a: string[] | undefined, b: string[] | undefined): boolean {
+  const al = a?.length ?? 0
+  const bl = b?.length ?? 0
+  if (al !== bl) return false
+  for (let i = 0; i < al; i++) {
+    if (a![i] !== b![i]) return false
+  }
+  return true
+}
+
+function messageTurnKey(message: UIMessage): string {
+  return getUserTurnId(message) ?? (typeof (message as { id?: unknown }).id === 'string' ? (message as { id: string }).id : '')
+}
+
+function isTurnInList(message: UIMessage, turnIds: string[]): boolean {
+  const turnId = messageTurnKey(message)
+  return !!turnId && turnIds.includes(turnId)
+}
+
+function isSourcesOpenForMessage(message: UIMessage, sourcesPanel: TextChatMessageProps['sourcesPanel']): boolean {
+  const turnId = messageTurnKey(message)
+  return !!turnId && sourcesPanel?.turnId === turnId
+}
+
+function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChatMessageProps): boolean {
+  if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
+  if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
+
+  const exchangeIndex = next.exchangeIndex
+  if (exchangeIndex === next.latestExchangeIndex) return false
+
+  if (prev.exchangeModes[exchangeIndex] !== next.exchangeModes[exchangeIndex]) return false
+  if (prev.selectedTabPerExchange[exchangeIndex] !== next.selectedTabPerExchange[exchangeIndex]) return false
+  if (!sameStringArray(prev.exchangeModels[exchangeIndex], next.exchangeModels[exchangeIndex])) return false
+  if (!sameStringArray(prev.selectedModels, next.selectedModels)) return false
+  if (prev.interruptedExchangeIdx !== next.interruptedExchangeIdx) return false
+  if (isTurnInList(prev.message, prev.exitingTurnIds) !== isTurnInList(next.message, next.exitingTurnIds)) return false
+  if (isSourcesOpenForMessage(prev.message, prev.sourcesPanel) !== isSourcesOpenForMessage(next.message, next.sourcesPanel)) return false
+
+  return true
+}
+
 function TextChatMessage(props: TextChatMessageProps) {
+  recordRender('TextChatMessage')
   const {
     message,
     exchangeIndex,
@@ -144,10 +190,16 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
-  let assistantVisualBlocks = buildAssistantVisualSequence(responseParts)
-  if (assistantVisualBlocks.length === 0 && responseText.trim()) {
-    assistantVisualBlocks = [{ kind: 'text', text: normalizeAgentAssistantText(responseText) }]
-  }
+  // Memoized so completed messages keep a stable block-array identity across the
+  // frequent re-renders a streaming sibling triggers. Without this the array is rebuilt
+  // every render, busting ExchangeBlock's downstream useMemos and the MarkdownMessage memo.
+  const assistantVisualBlocks = useMemo(() => {
+    const blocks = buildAssistantVisualSequence(responseParts)
+    if (blocks.length === 0 && responseText.trim()) {
+      return [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }]
+    }
+    return blocks
+  }, [responseParts, responseText])
   const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
   const hasAssistantActivity = assistantVisualBlocks.length > 0
   const isStreaming = (activeHttpLoading || persistedStatus === 'generating') && hasAssistantActivity

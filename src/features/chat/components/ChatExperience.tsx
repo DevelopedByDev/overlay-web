@@ -141,6 +141,7 @@ import type {
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -193,6 +194,24 @@ type PendingFirstSendState = {
   activeChatTitleSnapshot: string | null
 }
 
+/**
+ * Value-equality for two assistant messages as far as the live-sync effect cares.
+ * Used to suppress no-op setMessages calls that would otherwise re-trigger the
+ * helper-dependent sync effect and spin a render loop.
+ */
+function sameAssistantSnapshot(a: unknown, b: unknown): boolean {
+  const ma = a as { status?: string; model?: string; metadata?: { routedModelId?: string }; parts?: unknown }
+  const mb = b as { status?: string; model?: string; metadata?: { routedModelId?: string }; parts?: unknown }
+  if (ma.status !== mb.status) return false
+  if (ma.model !== mb.model) return false
+  if ((ma.metadata?.routedModelId ?? null) !== (mb.metadata?.routedModelId ?? null)) return false
+  try {
+    return JSON.stringify(ma.parts ?? null) === JSON.stringify(mb.parts ?? null)
+  } catch {
+    return false
+  }
+}
+
 function readableModelId(modelId: string): string {
   const slug = modelId.split('/').pop() ?? modelId
   const abbreviations: Record<string, string> = {
@@ -232,6 +251,7 @@ export default function ChatExperience({
   initialChats?: Conversation[]
   initialChatPageInfo?: ChatListPageInfo
 }) {
+  recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -599,6 +619,19 @@ export default function ChatExperience({
   const pendingScrollChatIdRef = useRef<string | null>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
   const [mentions, setMentions] = useState<MentionItem[]>([])
+  // MentionInput emits a fresh mentions array on every keystroke. Bail out when the
+  // value is unchanged so plain typing does not push new state / re-render the whole
+  // chat experience on each character.
+  const handleMentionsChange = useCallback((next: MentionItem[]) => {
+    setMentions((prev) => {
+      if (prev === next) return prev
+      if (prev.length === next.length &&
+        prev.every((m, i) => m.type === next[i]!.type && m.id === next[i]!.id && m.name === next[i]!.name)) {
+        return prev
+      }
+      return next
+    })
+  }, [])
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
@@ -958,6 +991,14 @@ export default function ChatExperience({
         )
       })
       if (existingIdx >= 0) {
+        // Only replace (and report a change) when the incoming snapshot actually
+        // differs. Without this, every effect run rebuilds nextMessage and reports
+        // "changed", calling setMessages → new useChat helper identities → the effect
+        // (which depends on those helpers) re-runs → setMessages → an infinite render
+        // loop that locks the page while a generating message exists in liveMessages.
+        if (sameAssistantSnapshot(messages[existingIdx], nextMessage)) {
+          return false
+        }
         messages[existingIdx] = nextMessage
         return true
       }
@@ -3914,7 +3955,7 @@ export default function ChatExperience({
               input,
               inputRevision,
               onInputChange: handleComposerInputChange,
-              onMentionsChange: setMentions,
+              onMentionsChange: handleMentionsChange,
               onPaste: handlePaste,
               hasComposerText,
             }}
