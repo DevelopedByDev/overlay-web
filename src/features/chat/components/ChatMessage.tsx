@@ -1,7 +1,7 @@
 'use client'
 
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
-import { type ComponentProps, useMemo } from 'react'
+import { type ComponentProps, memo, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -77,8 +77,52 @@ type TextChatMessageProps = CommonMessageProps & {
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
 
 export function ChatMessage(props: ChatMessageProps) {
-  if (props.kind === 'text') return <TextChatMessage {...props} />
+  if (props.kind === 'text') return <MemoTextChatMessage {...props} />
   return <ChatMediaMessage {...props} />
+}
+
+const MemoTextChatMessage = memo(TextChatMessage, areTextChatMessagePropsEqual)
+
+function sameStringArray(a: string[] | undefined, b: string[] | undefined): boolean {
+  const al = a?.length ?? 0
+  const bl = b?.length ?? 0
+  if (al !== bl) return false
+  for (let i = 0; i < al; i++) {
+    if (a![i] !== b![i]) return false
+  }
+  return true
+}
+
+function messageTurnKey(message: UIMessage): string {
+  return getUserTurnId(message) ?? (typeof (message as { id?: unknown }).id === 'string' ? (message as { id: string }).id : '')
+}
+
+function isTurnInList(message: UIMessage, turnIds: string[]): boolean {
+  const turnId = messageTurnKey(message)
+  return !!turnId && turnIds.includes(turnId)
+}
+
+function isSourcesOpenForMessage(message: UIMessage, sourcesPanel: TextChatMessageProps['sourcesPanel']): boolean {
+  const turnId = messageTurnKey(message)
+  return !!turnId && sourcesPanel?.turnId === turnId
+}
+
+function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChatMessageProps): boolean {
+  if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
+  if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
+
+  const exchangeIndex = next.exchangeIndex
+  if (exchangeIndex === next.latestExchangeIndex) return false
+
+  if (prev.exchangeModes[exchangeIndex] !== next.exchangeModes[exchangeIndex]) return false
+  if (prev.selectedTabPerExchange[exchangeIndex] !== next.selectedTabPerExchange[exchangeIndex]) return false
+  if (!sameStringArray(prev.exchangeModels[exchangeIndex], next.exchangeModels[exchangeIndex])) return false
+  if (!sameStringArray(prev.selectedModels, next.selectedModels)) return false
+  if (prev.interruptedExchangeIdx !== next.interruptedExchangeIdx) return false
+  if (isTurnInList(prev.message, prev.exitingTurnIds) !== isTurnInList(next.message, next.exitingTurnIds)) return false
+  if (isSourcesOpenForMessage(prev.message, prev.sourcesPanel) !== isSourcesOpenForMessage(next.message, next.sourcesPanel)) return false
+
+  return true
 }
 
 function TextChatMessage(props: TextChatMessageProps) {

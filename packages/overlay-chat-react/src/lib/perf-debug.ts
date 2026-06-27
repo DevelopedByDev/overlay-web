@@ -8,8 +8,11 @@
  *
  * When enabled it:
  *   - counts renders per component and prints a 1s rollup (spot re-render loops),
- *   - times synchronous hot paths (markdown normalize/parse) and warns on slow ones,
- *   - observes browser long tasks (>50ms) that block the main thread.
+ *   - times synchronous hot paths (markdown normalize/parse) and warns on slow ones.
+ *
+ * Long-task logging is intentionally separate because console.warn + rrweb console
+ * recording can add significant overhead in dev. Enable it with:
+ *   localStorage.setItem('overlay_perf_longtasks', '1'); location.reload()
  *
  * Everything is a no-op (and tree-shake friendly via the early `enabled` checks)
  * when the flag is off, so it is safe to leave wired in.
@@ -61,6 +64,16 @@ export function timeSync<T>(label: string, fn: () => T): T {
   }
 }
 
+function isLongTaskDebugEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage?.getItem('overlay_perf_longtasks') === '1' ||
+      new URLSearchParams(window.location.search).get('perfLongTasks') === '1'
+  } catch {
+    return false
+  }
+}
+
 function startGlobalReporters(): void {
   if (reportersStarted || typeof window === 'undefined') return
   reportersStarted = true
@@ -84,18 +97,19 @@ function startGlobalReporters(): void {
     slowTimings.clear()
   }, 1000)
 
-  // Long tasks block the main thread → this is what triggers "Page Unresponsive".
-  try {
-    const obs = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.duration >= 50) {
-          // eslint-disable-next-line no-console
-          console.warn(`[perf] LONG TASK ${entry.duration.toFixed(0)}ms`, entry)
+  if (isLongTaskDebugEnabled()) {
+    try {
+      const obs = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration >= 50) {
+            // eslint-disable-next-line no-console
+            console.warn(`[perf] LONG TASK ${entry.duration.toFixed(0)}ms`, entry)
+          }
         }
-      }
-    })
-    obs.observe({ entryTypes: ['longtask'] })
-  } catch {
-    /* longtask not supported */
+      })
+      obs.observe({ entryTypes: ['longtask'] })
+    } catch {
+      /* longtask not supported */
+    }
   }
 }
