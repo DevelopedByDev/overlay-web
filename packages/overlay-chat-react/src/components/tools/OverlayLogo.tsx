@@ -1,10 +1,13 @@
+import { useChatReactConfig } from '../../context/chat-react-config'
+
 /** 16×16 overlay mark for tool-call rails (extension uses `/overlay-logo.png`). */
 export const OVERLAY_LOGO_SRC = '/overlay-logo.png'
 
 export function ToolLineLogo() {
+  const { toolLogoUrl } = useChatReactConfig()
   return (
     <img
-      src={OVERLAY_LOGO_SRC}
+      src={toolLogoUrl ?? OVERLAY_LOGO_SRC}
       alt=""
       width={16}
       height={16}
