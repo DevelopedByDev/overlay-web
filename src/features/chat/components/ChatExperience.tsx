@@ -2522,13 +2522,13 @@ export default function ChatExperience({
       const branchRows = rows.slice(0, targetIdx + 1)
       const branchChatId = await createNewChat({ title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch` })
       if (!branchChatId) throw new Error('Could not create branch')
-      for (const message of branchRows) {
+      const branchCopyRequestPrefix = createIdempotencyKey()
+      for (const [messageIndex, message] of branchRows.entries()) {
         const content = (message.parts ?? [])
           .filter((part) => part.type === 'text' && part.text?.trim())
           .map((part) => part.text!.trim())
           .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
         const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
-        const branchTurnKey = message.turnId?.trim()
         const res = await overlayAppClient.conversations.addMessageResponse(
           {
             conversationId: branchChatId,
@@ -2543,9 +2543,13 @@ export default function ChatExperience({
             ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
           },
           {
-            idempotencyKey: branchTurnKey
-              ? `${branchTurnKey}:${message.role ?? 'unknown'}`
-              : createIdempotencyKey(),
+            idempotencyKey: [
+              'branch-copy',
+              branchCopyRequestPrefix,
+              messageIndex,
+              message.role ?? 'unknown',
+              message.variantIndex ?? 0,
+            ].join(':'),
           },
         )
         if (!res.ok) throw new Error('Could not copy branch messages')
