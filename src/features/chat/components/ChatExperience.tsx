@@ -194,6 +194,24 @@ type PendingFirstSendState = {
   activeChatTitleSnapshot: string | null
 }
 
+/**
+ * Value-equality for two assistant messages as far as the live-sync effect cares.
+ * Used to suppress no-op setMessages calls that would otherwise re-trigger the
+ * helper-dependent sync effect and spin a render loop.
+ */
+function sameAssistantSnapshot(a: unknown, b: unknown): boolean {
+  const ma = a as { status?: string; model?: string; metadata?: { routedModelId?: string }; parts?: unknown }
+  const mb = b as { status?: string; model?: string; metadata?: { routedModelId?: string }; parts?: unknown }
+  if (ma.status !== mb.status) return false
+  if (ma.model !== mb.model) return false
+  if ((ma.metadata?.routedModelId ?? null) !== (mb.metadata?.routedModelId ?? null)) return false
+  try {
+    return JSON.stringify(ma.parts ?? null) === JSON.stringify(mb.parts ?? null)
+  } catch {
+    return false
+  }
+}
+
 function readableModelId(modelId: string): string {
   const slug = modelId.split('/').pop() ?? modelId
   const abbreviations: Record<string, string> = {
@@ -960,6 +978,14 @@ export default function ChatExperience({
         )
       })
       if (existingIdx >= 0) {
+        // Only replace (and report a change) when the incoming snapshot actually
+        // differs. Without this, every effect run rebuilds nextMessage and reports
+        // "changed", calling setMessages → new useChat helper identities → the effect
+        // (which depends on those helpers) re-runs → setMessages → an infinite render
+        // loop that locks the page while a generating message exists in liveMessages.
+        if (sameAssistantSnapshot(messages[existingIdx], nextMessage)) {
+          return false
+        }
         messages[existingIdx] = nextMessage
         return true
       }
