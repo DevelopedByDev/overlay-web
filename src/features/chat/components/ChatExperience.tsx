@@ -141,6 +141,7 @@ import type {
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -232,6 +233,7 @@ export default function ChatExperience({
   initialChats?: Conversation[]
   initialChatPageInfo?: ChatListPageInfo
 }) {
+  recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()

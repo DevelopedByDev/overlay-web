@@ -14,6 +14,7 @@ import { appendStreamMarker, normalizeGeneratedMarkdown } from './markdown/norma
 import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
+import { recordRender, timeSync } from '../lib/perf-debug'
 
 interface Props {
   text: string
@@ -57,19 +58,22 @@ function MarkdownMessageImpl({
   appBaseUrl = null,
   onOpenAttachmentPreview,
 }: Props) {
+  recordRender(isStreaming ? 'MarkdownMessage(streaming)' : 'MarkdownMessage')
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
   const normalizedDisplay = useMemo(
     () =>
-      normalizeGeneratedMarkdown(text, {
-        sourceCitations,
-        appBaseUrl,
-        linkifyCitations: !isStreaming && hasCitationMap,
-        webSources,
-        // Linkify web citations even while streaming so inline chips render with the text,
-        // instead of appearing only after completion.
-        linkifyWebCitations: hasWebSources,
-      }),
+      timeSync('normalizeGeneratedMarkdown', () =>
+        normalizeGeneratedMarkdown(text, {
+          sourceCitations,
+          appBaseUrl,
+          linkifyCitations: !isStreaming && hasCitationMap,
+          webSources,
+          // Linkify web citations even while streaming so inline chips render with the text,
+          // instead of appearing only after completion.
+          linkifyWebCitations: hasWebSources,
+        }),
+      ),
     [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources, appBaseUrl],
   )
 

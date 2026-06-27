@@ -29,6 +29,7 @@ import {
   splitUserDisplayText,
 } from '@overlay/chat-core'
 import type { DraftModalState } from './chat-interface/types'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'
 
@@ -81,6 +82,7 @@ export function ChatMessage(props: ChatMessageProps) {
 }
 
 function TextChatMessage(props: TextChatMessageProps) {
+  recordRender('TextChatMessage')
   const {
     message,
     exchangeIndex,

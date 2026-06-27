@@ -13,6 +13,7 @@ import type {
 } from '@overlay/chat-react'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { streamingReservedSpacerHeight } from '../lib/constrain-streaming-scroll'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
 
 type ChatInstance = UseChatHelpers<UIMessage>
@@ -141,6 +142,7 @@ function ChatMessages({
   runtime,
   actions,
 }: Pick<ChatMessageListProps, 'state' | 'runtime' | 'actions'>) {
+  recordRender('ChatMessages(list)')
   const blocks: ReactNode[] = []
   let exchangeIndex = 0
 
