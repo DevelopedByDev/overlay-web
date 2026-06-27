@@ -619,6 +619,19 @@ export default function ChatExperience({
   const pendingScrollChatIdRef = useRef<string | null>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
   const [mentions, setMentions] = useState<MentionItem[]>([])
+  // MentionInput emits a fresh mentions array on every keystroke. Bail out when the
+  // value is unchanged so plain typing does not push new state / re-render the whole
+  // chat experience on each character.
+  const handleMentionsChange = useCallback((next: MentionItem[]) => {
+    setMentions((prev) => {
+      if (prev === next) return prev
+      if (prev.length === next.length &&
+        prev.every((m, i) => m.type === next[i]!.type && m.id === next[i]!.id && m.name === next[i]!.name)) {
+        return prev
+      }
+      return next
+    })
+  }, [])
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const videoSubModePickerRef = useRef<HTMLDivElement>(null)
   const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
@@ -3942,7 +3955,7 @@ export default function ChatExperience({
               input,
               inputRevision,
               onInputChange: handleComposerInputChange,
-              onMentionsChange: setMentions,
+              onMentionsChange: handleMentionsChange,
               onPaste: handlePaste,
               hasComposerText,
             }}
