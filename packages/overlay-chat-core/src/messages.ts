@@ -4,9 +4,13 @@ import type {
   AutomationDraftSummary,
   ChatMessageMetadata,
   ChatOutput,
+  ConversationMessagePart,
   GenerationResult,
   LiveMessageDelta,
   MessageImageAttachment,
+  MessageReasoningPart,
+  MessageTextPart,
+  MessageToolPart,
   RestoredOutputGroup,
   ServerConversationMessage,
   SkillDraftSummary,
@@ -415,6 +419,106 @@ export function applyLiveMessageDeltaParts(
     nextParts = mergeLiveStreamingParts(nextParts, delta.newParts)
   }
   return nextParts
+}
+
+/**
+ * Merge flattened {@link ConversationMessagePart} deltas into an existing part list.
+ *
+ * Unlike {@link mergeLiveStreamingParts} (which operates on AI SDK UI parts with
+ * `tool-invocation` wrappers), this works on the flattened shared part shape used
+ * by desktop streaming and persistence:
+ *   - text: append to the trailing text part when present, otherwise push a new one
+ *   - reasoning: append to the trailing streaming reasoning part, otherwise push
+ *   - tool: merge by `toolCallId` (toolName, state, input, output, errorText)
+ *   - file/source/data: push as-is
+ *
+ * Each delta part may omit `id`; an id is assigned based on its index when missing.
+ */
+export function mergeStreamingConversationParts(
+  existingParts: ConversationMessagePart[],
+  newParts: ConversationMessagePart[],
+  idPrefix = 'part',
+): ConversationMessagePart[] {
+  let nextParts = [...existingParts]
+  for (let i = 0; i < newParts.length; i++) {
+    const part = newParts[i]!
+    const ensured: ConversationMessagePart =
+      part.id ? part : ({ ...part, id: `${idPrefix}:${existingParts.length + i}` } as ConversationMessagePart)
+
+    if (ensured.type === 'text') {
+      const last = nextParts[nextParts.length - 1]
+      if (last?.type === 'text') {
+        nextParts = [
+          ...nextParts.slice(0, -1),
+          { ...last, text: `${last.text}${ensured.text}` } satisfies MessageTextPart,
+        ]
+        continue
+      }
+      nextParts = [...nextParts, ensured]
+      continue
+    }
+
+    if (ensured.type === 'reasoning') {
+      const last = nextParts[nextParts.length - 1]
+      if (last?.type === 'reasoning' && last.state === 'streaming') {
+        nextParts = [
+          ...nextParts.slice(0, -1),
+          {
+            ...last,
+            text: `${last.text}${ensured.text}`,
+            state: ensured.state === 'done' ? 'done' : last.state,
+          } satisfies MessageReasoningPart,
+        ]
+        continue
+      }
+      nextParts = [...nextParts, ensured]
+      continue
+    }
+
+    if (ensured.type === 'tool') {
+      const existingIdx = nextParts.findIndex(
+        (candidate): candidate is MessageToolPart =>
+          candidate.type === 'tool' && candidate.toolCallId === ensured.toolCallId,
+      )
+      if (existingIdx >= 0) {
+        const existing = nextParts[existingIdx] as MessageToolPart
+        nextParts = [
+          ...nextParts.slice(0, existingIdx),
+          {
+            ...existing,
+            toolName:
+              ensured.toolName === 'unknown_tool' ? existing.toolName : ensured.toolName,
+            state: ensured.state,
+            input: ensured.input ?? existing.input,
+            inputText: ensured.inputText ?? existing.inputText,
+            output: ensured.output ?? existing.output,
+            errorText: ensured.errorText ?? existing.errorText,
+            providerExecuted: ensured.providerExecuted ?? existing.providerExecuted,
+            dynamic: ensured.dynamic ?? existing.dynamic,
+            title: ensured.title ?? existing.title,
+          } satisfies MessageToolPart,
+          ...nextParts.slice(existingIdx + 1),
+        ]
+        continue
+      }
+      nextParts = [...nextParts, ensured]
+      continue
+    }
+
+    nextParts = [...nextParts, ensured]
+  }
+  return nextParts
+}
+
+/** Mark all streaming reasoning parts as done (call once when a stream finishes). */
+export function finalizeStreamingConversationParts(
+  parts: ConversationMessagePart[],
+): ConversationMessagePart[] {
+  return parts.map((part) =>
+    part.type === 'reasoning' && part.state === 'streaming'
+      ? { ...part, state: 'done' } satisfies MessageReasoningPart
+      : part,
+  )
 }
 
 export function errorLabel(err: Error | null | undefined): string | null {
