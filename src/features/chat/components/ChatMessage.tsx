@@ -1,7 +1,7 @@
 'use client'
 
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
-import { type ComponentProps, memo, useMemo } from 'react'
+import { type ComponentProps, memo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -152,14 +152,11 @@ function TextChatMessage(props: TextChatMessageProps) {
   const isMultiAct = isActExchange && modelList.length > 1
   const streamSlotIndex = !selectedModelId ? -1 : isMultiAct ? modelList.indexOf(selectedModelId) : isActExchange ? -1 : selectedModels.indexOf(selectedModelId)
   const slotInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
-  let responseMsg = props.getResponseForExchangeForModel(selectedModelId, exchangeIndex, isMultiAct ? modelList : undefined)
-  let responseText = responseMsg ? getMessageText(responseMsg) : ''
-
-  if (isActExchange && !isMultiAct) {
-    const paired = resolveActAssistant(primaryMessages, actChat.messages, message.id)
-    responseMsg = paired ? (paired as UIMessage) : null
-    responseText = paired ? getMessageText(paired) : ''
-  }
+  const initialResponseMsg = props.getResponseForExchangeForModel(selectedModelId, exchangeIndex, isMultiAct ? modelList : undefined)
+  const responseMsg = (isActExchange && !isMultiAct
+    ? resolveActAssistant(primaryMessages, actChat.messages, message.id)
+    : initialResponseMsg) as UIMessage | null
+  const responseText = responseMsg ? getMessageText(responseMsg) : ''
 
   const multiActInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
   const persistedStatus = (responseMsg as { status?: 'generating' | 'completed' | 'error' } | null)?.status
@@ -190,16 +187,13 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
-  // Memoized so completed messages keep a stable block-array identity across the
-  // frequent re-renders a streaming sibling triggers. Without this the array is rebuilt
-  // every render, busting ExchangeBlock's downstream useMemos and the MarkdownMessage memo.
-  const assistantVisualBlocks = useMemo(() => {
+  const assistantVisualBlocks = (() => {
     const blocks = buildAssistantVisualSequence(responseParts)
     if (blocks.length === 0 && responseText.trim()) {
       return [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }]
     }
     return blocks
-  }, [responseParts, responseText])
+  })()
   const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
   const hasAssistantActivity = assistantVisualBlocks.length > 0
   const isStreaming = (activeHttpLoading || persistedStatus === 'generating') && hasAssistantActivity
