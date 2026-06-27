@@ -13,6 +13,11 @@ import {
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 import { buildActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 
+// Coalesce streamed message-state updates to ~15fps (66ms). The underlying Chat store
+// still receives every token immediately; this only throttles how often `useChat`
+// pushes new state into React, which is what drives the message-list re-render.
+const STREAM_THROTTLE_MS = 66
+
 function createConversationRuntime(
   chatId: string,
   uiOverrides: Partial<ConversationUiState> = {},
@@ -131,11 +136,15 @@ export function useChatRuntimes(activeChatId: string | null) {
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
   const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
-  const chat0 = useChat({ chat: activeRuntime.askChats[0] })
-  const chat1 = useChat({ chat: activeRuntime.askChats[1] })
-  const chat2 = useChat({ chat: activeRuntime.askChats[2] })
-  const chat3 = useChat({ chat: activeRuntime.askChats[3] })
-  const actChat = useChat({ chat: activeRuntime.actChat })
+  // Throttle streamed UI state updates so re-renders are coalesced to ~15fps instead of
+  // firing on every token. Tokens still accumulate at full speed in the underlying Chat
+  // store; only how often React re-renders the message list is capped. This is the main
+  // lever that keeps long conversations responsive during streaming.
+  const chat0 = useChat({ chat: activeRuntime.askChats[0], experimental_throttle: STREAM_THROTTLE_MS })
+  const chat1 = useChat({ chat: activeRuntime.askChats[1], experimental_throttle: STREAM_THROTTLE_MS })
+  const chat2 = useChat({ chat: activeRuntime.askChats[2], experimental_throttle: STREAM_THROTTLE_MS })
+  const chat3 = useChat({ chat: activeRuntime.askChats[3], experimental_throttle: STREAM_THROTTLE_MS })
+  const actChat = useChat({ chat: activeRuntime.actChat, experimental_throttle: STREAM_THROTTLE_MS })
   const chat0Ref = useRef(chat0)
   const chat1Ref = useRef(chat1)
   const chat2Ref = useRef(chat2)

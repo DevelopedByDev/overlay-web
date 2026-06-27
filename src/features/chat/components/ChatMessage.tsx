@@ -1,7 +1,7 @@
 'use client'
 
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
@@ -144,10 +144,16 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
-  let assistantVisualBlocks = buildAssistantVisualSequence(responseParts)
-  if (assistantVisualBlocks.length === 0 && responseText.trim()) {
-    assistantVisualBlocks = [{ kind: 'text', text: normalizeAgentAssistantText(responseText) }]
-  }
+  // Memoized so completed messages keep a stable block-array identity across the
+  // frequent re-renders a streaming sibling triggers. Without this the array is rebuilt
+  // every render, busting ExchangeBlock's downstream useMemos and the MarkdownMessage memo.
+  const assistantVisualBlocks = useMemo(() => {
+    const blocks = buildAssistantVisualSequence(responseParts)
+    if (blocks.length === 0 && responseText.trim()) {
+      return [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }]
+    }
+    return blocks
+  }, [responseParts, responseText])
   const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
   const hasAssistantActivity = assistantVisualBlocks.length > 0
   const isStreaming = (activeHttpLoading || persistedStatus === 'generating') && hasAssistantActivity
