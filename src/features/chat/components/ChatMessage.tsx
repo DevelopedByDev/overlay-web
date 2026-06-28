@@ -62,6 +62,7 @@ type TextChatMessageProps = CommonMessageProps & {
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
+  onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: Parameters<typeof ChatToolSurface>[0]['onOpenSources']
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
@@ -243,6 +244,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       replyThreadMeta={getUserReplyThreadMeta(message)}
       onJumpToReply={props.onJumpToReply}
       onOpenDraft={props.onOpenDraft}
+      onCreateAutomationDraft={props.onCreateAutomationDraft}
       onOpenSources={props.onOpenSources}
       isSourcesOpenForThis={!!sourcesPanel && sourcesPanel.turnId === (turnId ?? message.id)}
       onRetry={() => props.onRetry(message, exchangeIndex, isActExchange, modelList)}

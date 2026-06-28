@@ -590,11 +590,9 @@ export default function ChatExperience({
   const {
     draftModalState,
     isDraftSaving,
-    saveAutomationDraft,
     saveSkillDraft,
     setDraftModalState,
   } = useDraftReviewActions({
-    activeChatId,
     embedProjectId,
     setComposerNotice,
   })
@@ -3500,6 +3498,19 @@ export default function ChatExperience({
   const handleSendRef = useRef(handleSend)
   handleSendRef.current = handleSend
 
+  const handleCreateAutomationDraftViaChat = useCallback(async () => {
+    if (isActiveLoadingRef.current) return
+    setDraftModalState(null)
+    setGenerationMode('text')
+    setGenerationChip(null)
+    setInput('Create automation')
+    await new Promise<void>((resolve) => {
+      window.setTimeout(() => {
+        void handleSendRef.current().finally(resolve)
+      }, 0)
+    })
+  }, [setDraftModalState, setGenerationChip, setGenerationMode, setInput])
+
   // Auto-continue: when the latest assistant message contains a timeout sentinel
   // and the user has enabled auto-continue, automatically send "continue".
   useEffect(() => {
@@ -3908,6 +3919,7 @@ export default function ChatExperience({
               onReplyToAssistantText: beginReplyToAssistantText,
               onBranch: handleBranchConversationAtTurn,
               onOpenDraft: setDraftModalState,
+              onCreateAutomationDraft: handleCreateAutomationDraftViaChat,
               onOpenSources: openSourcesPanel,
               onRetry: handleRetryExchange,
               onOpenFilePreview: openFilePreview,
@@ -4047,7 +4059,7 @@ export default function ChatExperience({
             if (!isDraftSaving) setDraftModalState(null)
           }}
           onSaveSkill={saveSkillDraft}
-          onSaveAutomation={saveAutomationDraft}
+          onSaveAutomation={handleCreateAutomationDraftViaChat}
         />
 
       </div>

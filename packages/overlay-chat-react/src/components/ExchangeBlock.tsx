@@ -45,6 +45,8 @@ export type UserImageAttachment = {
 
 export type AttachmentPreviewRequest = AttachmentPreview
 
+type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
+
 export interface ExchangeBlockProps {
   userMsgId: string
   userBodyText: string
@@ -77,6 +79,7 @@ export interface ExchangeBlockProps {
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null
   onJumpToReply: (turnId: string) => void
   onOpenDraft: (state: DraftModalState) => void
+  onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   /** Open the shared sources sidebar with these web sources (lifted to ChatInterface). */
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
   /** Whether the shared sidebar is currently showing this exchange's sources. */
@@ -99,7 +102,7 @@ export function ExchangeBlock({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
+  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange,
 }: ExchangeBlockProps) {
     recordRender(isStreaming ? 'ExchangeBlock(streaming)' : 'ExchangeBlock')
@@ -272,7 +275,13 @@ export function ExchangeBlock({
                     primaryLabel="Review draft"
                     secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
                     onPrimary={() => onOpenDraft(draft)}
-                    onSecondary={() => onOpenDraft(draft)}
+                    onSecondary={() => {
+                      if (draft.kind === 'automation') {
+                        void onCreateAutomationDraft(draft)
+                      } else {
+                        onOpenDraft(draft)
+                      }
+                    }}
                   />
                 )
               }

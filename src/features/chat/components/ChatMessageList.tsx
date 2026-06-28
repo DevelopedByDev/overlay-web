@@ -50,6 +50,7 @@ export type ChatMessageListActions = {
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
+  onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
   onRetry: (message: UIMessage, exchangeIndex: number, isActExchange: boolean, exchangeModels: string[]) => void | Promise<void>
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
@@ -198,6 +199,7 @@ function ChatMessages({
         onReplyToAssistantText={actions.onReplyToAssistantText}
         onBranch={actions.onBranch}
         onOpenDraft={actions.onOpenDraft}
+        onCreateAutomationDraft={actions.onCreateAutomationDraft}
         onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}
         onRetry={actions.onRetry}
         onOpenFilePreview={actions.onOpenFilePreview}
