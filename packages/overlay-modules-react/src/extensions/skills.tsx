@@ -165,15 +165,15 @@ export interface SkillsPanelProps {
 export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit, onToggle }: SkillsPanelProps) {
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center">
         <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
-      </div>
+      </AppScreenBody>
     )
   }
 
   if (skills.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 px-6">
         <Sparkles size={40} strokeWidth={1} className="text-[var(--muted-light)]" />
         <div className="space-y-1 text-center">
           <p className="text-sm font-medium text-[var(--foreground)]">No skills yet</p>
@@ -186,7 +186,7 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           <Plus size={14} />
           New Skill
         </button>
-      </div>
+      </AppScreenBody>
     )
   }
 

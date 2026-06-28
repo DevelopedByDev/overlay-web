@@ -180,22 +180,22 @@ export interface McpServersPanelProps {
 export function McpServersPanel({ loading, servers, filteredServers, onCreate, onEdit, onToggle }: McpServersPanelProps) {
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center">
         <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
-      </div>
+      </AppScreenBody>
     )
   }
 
   if (servers.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 px-6">
         <Server size={40} strokeWidth={1} className="text-[var(--muted-light)]" />
         <div className="space-y-1 text-center">
           <p className="text-sm font-medium text-[var(--foreground)]">No MCP servers configured</p>
           <p className="text-xs text-[var(--muted-light)]">Add remote MCP servers to extend the AI agent with custom tools</p>
         </div>
         <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"><Plus size={14} />Add Server</button>
-      </div>
+      </AppScreenBody>
     )
   }
 

@@ -56,7 +56,7 @@ export function NotebookHeader({
 
   return (
     <AppScreenHeader className="px-0 py-0">
-      <div className="flex flex-1 items-center justify-between gap-3 px-6">
+      <div className="flex flex-1 items-center justify-between gap-2 px-3">
         <button
           type="button"
           onClick={onBackToFiles}
@@ -75,7 +75,7 @@ export function NotebookHeader({
           className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           style={{ fontFamily: 'var(--font-serif)' }}
         />
-        <div className="ml-3 flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           {projectName && (
             <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
               <FolderOpen size={9} />

@@ -48,11 +48,11 @@ import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 
 // ─── Main KnowledgeView ───────────────────────────────────────────────────────
 
-type FilesCategory = 'notes' | 'files' | 'outputs'
+type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
 
 function resolveFilesCategory(view: string | null | undefined): FilesCategory {
-  if (view === 'notes' || view === 'outputs') return view
-  return 'files'
+  if (view === 'notes' || view === 'files' || view === 'outputs') return view
+  return 'all'
 }
 
 function filterFilesByCategory(files: readonly FileNode[], category: FilesCategory): FileNode[] {
@@ -61,7 +61,9 @@ function filterFilesByCategory(files: readonly FileNode[], category: FilesCatego
 
   for (const file of files) {
     const matches =
-      category === 'notes'
+      category === 'all'
+        ? true
+        : category === 'notes'
         ? file.kind === 'note'
         : category === 'outputs'
           ? file.kind === 'output'

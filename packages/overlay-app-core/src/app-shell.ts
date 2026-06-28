@@ -171,7 +171,7 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
   },
   {
     id: 'files.create-note',
-    label: 'New File',
+    label: 'New Note',
     actionKey: 'notes.create',
     navigationItemId: 'files',
     featureModuleId: 'files-knowledge',

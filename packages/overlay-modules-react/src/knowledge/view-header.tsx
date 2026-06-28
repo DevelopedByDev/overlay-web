@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   BookOpen,
   ChevronRight,
+  Files,
   FileText,
   FolderInput,
   FolderOpen,
@@ -32,7 +33,7 @@ const TOOLBAR_FILLED_BUTTON_CLASS =
   'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-0 text-xs leading-none text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
 
 type KnowledgeLayout = 'list' | 'cards'
-type FilesCategory = 'notes' | 'files' | 'outputs'
+type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
 
 function SelectedFileHeader({
   fileTitle,
@@ -154,7 +155,14 @@ function HeaderTitle({
   memorySearchOpen: boolean
   mode: 'knowledge' | 'files'
 }) {
-  const filesTitle = filesCategory === 'notes' ? 'Notes' : filesCategory === 'outputs' ? 'Outputs' : 'Files'
+  const filesTitle =
+    filesCategory === 'all'
+      ? 'All'
+      : filesCategory === 'notes'
+        ? 'Notes'
+        : filesCategory === 'outputs'
+          ? 'Outputs'
+          : 'Files'
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-3">
       <h1 className="text-sm font-medium text-[var(--foreground)]">
@@ -279,6 +287,7 @@ const FILES_CATEGORY_ITEMS: Array<{
   label: string
   Icon: typeof BookOpen
 }> = [
+  { id: 'all', label: 'All', Icon: Files },
   { id: 'notes', label: 'Notes', Icon: BookOpen },
   { id: 'files', label: 'Files', Icon: FileText },
   { id: 'outputs', label: 'Outputs', Icon: Images },
@@ -539,7 +548,7 @@ export function KnowledgeViewHeader({
               <FilesCategoryControls
                 category={filesCategory}
                 onChange={(category) => onUpdateQuery({
-                  view: category === 'files' ? null : category,
+                  view: category === 'all' ? null : category,
                   file: null,
                   folder: null,
                 })}
