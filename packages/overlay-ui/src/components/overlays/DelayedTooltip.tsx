@@ -27,7 +27,12 @@ export function DelayedTooltip({
   const anchorRef = useRef<HTMLSpanElement>(null)
   const timerRef = useRef<number | null>(null)
 
+  function supportsHoverTooltip() {
+    return typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  }
+
   function show() {
+    if (!supportsHoverTooltip()) return
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
     timerRef.current = window.setTimeout(() => setOpen(true), SHOW_DELAY_MS)
   }
@@ -117,6 +122,7 @@ export function DelayedTooltip({
       className={className ? `relative ${className}` : 'relative inline-flex'}
       onMouseEnter={show}
       onMouseLeave={hide}
+      onPointerDown={hide}
     >
       {children}
       {tooltip}

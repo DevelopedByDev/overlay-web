@@ -179,7 +179,7 @@ export function AppScreenHeader({
   return (
     <header
       className={cn(
-        'flex min-h-16 shrink-0 flex-col justify-center gap-3 px-4 py-3 sm:px-6',
+        'flex min-h-14 shrink-0 flex-col justify-center gap-2 px-3 py-2.5 sm:px-6 md:min-h-16 md:gap-3 md:py-3',
         border ? 'border-b border-[var(--border)]' : null,
         className,
       )}
@@ -188,10 +188,10 @@ export function AppScreenHeader({
       {children ? (
         children
       ) : (
-        <div className="flex min-w-0 items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 md:flex-nowrap md:gap-4">
+          <div className="flex min-w-0 flex-1 items-center">
             {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center">
                 {title ? <h1 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h1> : null}
                 {subtitle ? (
@@ -208,7 +208,7 @@ export function AppScreenHeader({
             </div>
           </div>
           {(search || actions) ? (
-            <div className="flex min-w-0 shrink-0 items-center gap-2">
+            <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
               {actions}
             </div>

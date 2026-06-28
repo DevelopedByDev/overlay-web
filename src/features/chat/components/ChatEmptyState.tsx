@@ -42,7 +42,7 @@ export function ChatEmptyHero({
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="text-center max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:items-center max-md:justify-center md:mb-8"
+          className="text-center max-md:order-1 max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:items-center max-md:justify-center md:mb-8"
         >
           <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
             {greetingLine}
@@ -71,14 +71,14 @@ export function ChatEmptyState({
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
-            className="mx-auto mt-4 w-full max-w-[36rem] min-w-0 px-0 md:mt-5"
+            className="mx-auto mt-4 w-full max-w-[36rem] min-w-0 px-0 max-md:order-2 max-md:mb-3 max-md:mt-0 md:mt-5"
           >
             <div className="flex flex-wrap items-center justify-center gap-2">
               {suggestions.map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+                  className="inline-flex h-9 items-center gap-2 rounded-2xl border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
                   onClick={() => {
                     if (mode === 'automate') {
                       onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)

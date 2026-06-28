@@ -429,8 +429,8 @@ export function KnowledgeViewHeader({
   onCommitOutputFilter: (filter: OutputFilter) => void
 }) {
   return (
-    <AppScreenHeader className="px-6">
-      <div className="flex min-w-0 items-center gap-3">
+    <AppScreenHeader className="px-3 py-2.5 sm:px-6">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
           fileTitle={fileTitle}
@@ -465,12 +465,12 @@ export function KnowledgeViewHeader({
               onChange={(e) => onSetMemorySearchQuery(e.target.value)}
               placeholder="Search memories…"
               autoFocus
-              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] max-sm:order-3 max-sm:w-full max-sm:flex-none"
             />
           ) : (
             <div className="flex-1" />
           )}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
             <BulkSelectControls
               activeTab={activeTab}
               bulkDeleting={bulkDeleting}

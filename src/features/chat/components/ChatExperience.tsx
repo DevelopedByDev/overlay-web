@@ -3472,9 +3472,7 @@ export default function ChatExperience({
     ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
     : (askModelSelectionMode === 'multiple' && selectedModels.length > 1
       ? `${selectedModels.length} models`
-      : gatewayModelsLoading
-        ? 'Loading models…'
-        : (selectedTextModelName || 'Select model'))
+      : (selectedTextModelName || (gatewayModelsLoading ? 'Loading models…' : 'Select model')))
 
   // Read messages directly from the runtime Chat instance so the UI never lags
   // behind the loaded state (useChat's useSyncExternalStore can be one beat late).
