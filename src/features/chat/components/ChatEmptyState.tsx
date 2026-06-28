@@ -73,12 +73,12 @@ export function ChatEmptyState({
             transition={{ duration: 0.12 }}
             className="mx-auto mt-4 w-full max-w-[36rem] min-w-0 px-0 max-md:order-2 max-md:mb-3 max-md:mt-0 md:mt-5"
           >
-            <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="flex items-center gap-2 max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:overflow-y-hidden max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center">
               {suggestions.map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
-                  className="inline-flex h-9 items-center gap-2 rounded-2xl border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
                   onClick={() => {
                     if (mode === 'automate') {
                       onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)
