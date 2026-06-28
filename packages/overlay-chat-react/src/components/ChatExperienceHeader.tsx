@@ -115,7 +115,6 @@ export interface ChatExperienceHeaderProps {
   onBeginHeaderChatRename?: () => void
   showRenameButton: boolean
   projectName?: string | null
-  selectedAutomation: { name?: string } | null
   showAutomationChatTab: boolean
   appMode: 'chat' | 'automate'
   isTemporaryChat: boolean
@@ -182,7 +181,6 @@ export function ChatExperienceHeader({
   onBeginHeaderChatRename,
   showRenameButton,
   projectName,
-  selectedAutomation,
   showAutomationChatTab,
   appMode,
   isTemporaryChat,
@@ -295,7 +293,6 @@ export function ChatExperienceHeader({
               <button
                 type="button"
                 onClick={onToggleModelPicker}
-                disabled={!selectedAutomation}
                 className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
                 aria-label="Automation model"
               >
@@ -303,7 +300,7 @@ export function ChatExperienceHeader({
                 <ChevronDown size={11} className="shrink-0" />
               </button>
             </DelayedTooltip>
-            {showModelPicker && selectedAutomation ? (
+            {showModelPicker ? (
               <>
                 {hoveredModelId && modelQualitiesPos ? (
                   <div

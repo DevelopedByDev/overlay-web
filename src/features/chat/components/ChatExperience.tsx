@@ -1469,15 +1469,14 @@ export default function ChatExperience({
     selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
   const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
-  const showAutomationHeaderControls =
-    mode === 'automate' && (hasAutomationContext || Boolean(selectedAutomation))
+  const showAutomationHeaderControls = mode === 'automate'
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 
   // Automations must always run with exactly one model. Collapse multi-model selection
   // whenever the user is working inside an automation surface so saved automations and
   // automation-chat runs never inherit a stale multi-model state.
   useEffect(() => {
-    if (!hasAutomationContext) return
+    if (mode !== 'automate') return
     if (askModelSelectionMode !== 'multiple' && selectedModels.length <= 1) return
     const primary = selectedActModel || selectedModels[0] || DEFAULT_MODEL_ID
     setAskModelSelectionMode('single')
@@ -1485,7 +1484,7 @@ export default function ChatExperience({
     setSelectedActModel(primary)
   }, [
     askModelSelectionMode,
-    hasAutomationContext,
+    mode,
     selectedActModel,
     selectedModels,
     setAskModelSelectionMode,
@@ -3544,7 +3543,39 @@ export default function ChatExperience({
     />
   ) : null
 
-  const selectAutomationDetailTab = useCallback((tab: AutomationDetailTab) => {
+  const creatingAutomationDraftRef = useRef(false)
+  const selectAutomationDetailTab = useCallback(async (tab: AutomationDetailTab) => {
+    // A brand-new automation has no saved doc yet. Switching to "edit" creates an
+    // empty draft so the full editor can load and persist, then routes to it.
+    if (tab === 'edit' && mode === 'automate' && !automationIdParam && !selectedAutomation) {
+      if (creatingAutomationDraftRef.current) return
+      creatingAutomationDraftRef.current = true
+      try {
+        const res = await overlayAppClient.automations.createResponse({
+          name: 'New automation',
+          description: 'Draft automation',
+          instructions: 'Describe what this automation should do.',
+          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
+          modelId: selectedActModel,
+          enabled: false,
+          ...(embedProjectId ? { projectId: embedProjectId } : {}),
+        })
+        const payload = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
+        if (!res.ok || !payload.id) {
+          throw new Error(payload.error || 'Failed to create automation draft')
+        }
+        const params = new URLSearchParams(searchParams?.toString() ?? '')
+        params.set('automationId', payload.id)
+        params.set('tab', 'edit')
+        router.replace(`${pathname}?${params.toString()}`)
+      } catch (error) {
+        setComposerNotice(error instanceof Error ? error.message : 'Failed to open automation editor.')
+        window.setTimeout(() => setComposerNotice(null), 6000)
+      } finally {
+        creatingAutomationDraftRef.current = false
+      }
+      return
+    }
     const params = new URLSearchParams(searchParams?.toString() ?? '')
     if (tab === 'chat') {
       params.delete('tab')
@@ -3553,16 +3584,18 @@ export default function ChatExperience({
     }
     const query = params.toString()
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams])
+  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, embedProjectId, setComposerNotice])
 
   const automationHeaderModels = selectableTextModels
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
+    // Always reflect the choice in local model state so a brand-new automation
+    // (no saved doc yet) uses it when the automation is created from the first message.
+    setSelectedActModel(modelId)
+    setSelectedModels([modelId])
     if (!selectedAutomation) return
     const previousAutomation = selectedAutomation
     const nextAutomation = { ...selectedAutomation, modelId }
     setSelectedAutomation(nextAutomation)
-    setSelectedActModel(modelId)
-    setSelectedModels([modelId])
     try {
       const res = await overlayAppClient.automations.updateResponse({
         automationId: selectedAutomation._id,
@@ -3741,7 +3774,6 @@ export default function ChatExperience({
           onBeginHeaderChatRename={beginHeaderChatRename}
           showRenameButton={Boolean(activeChatId && !selectedAutomation)}
           projectName={projectName}
-          selectedAutomation={selectedAutomation}
           showAutomationChatTab={showAutomationChatTab}
           appMode={mode}
           isTemporaryChat={isTemporaryChat}
