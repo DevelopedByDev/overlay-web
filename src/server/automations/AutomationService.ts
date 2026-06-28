@@ -384,6 +384,7 @@ export class AutomationService {
   async testAutomation(args: {
     automationId?: string
     userId: string
+    baseUrl?: string
   }): Promise<{ success: true; runId: Id<'automationRuns'>; conversationId: Id<'conversations'> }> {
     let runId: Id<'automationRuns'> | null = null
     let automationId: Id<'automations'> | null = null
@@ -437,6 +438,7 @@ export class AutomationService {
         conversationId,
         turnId,
         scheduledFor,
+        baseUrl: args.baseUrl,
       })
 
       await this.deps.repository.markManualRunCompleted({
@@ -468,6 +470,7 @@ export class AutomationService {
   async runAutomation(args: {
     runId?: string
     serviceUserId: string
+    baseUrl?: string
   }): Promise<{ success: true; conversationId: Id<'conversations'> }> {
     let automationId: string | undefined
     let userId: string | undefined
@@ -500,6 +503,7 @@ export class AutomationService {
         conversationId,
         turnId,
         scheduledFor: run.scheduledFor,
+        baseUrl: args.baseUrl,
       })
 
       this.events.finished({

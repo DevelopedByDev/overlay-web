@@ -357,6 +357,7 @@ export const list = query({
     return all
       .map(normalizeConversationDoc)
       .filter((c) => !c.projectId)
+      .filter((c) => !c.isAutomation)
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
       .slice(0, 100)
@@ -418,8 +419,9 @@ export const create = mutation({
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    isAutomation: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -450,6 +452,7 @@ export const create = mutation({
       lastMode: lastMode ?? 'act',
       askModelIds: ask,
       actModelId: act,
+      isAutomation: isAutomation ?? false,
     })
   },
 })

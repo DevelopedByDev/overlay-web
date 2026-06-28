@@ -527,6 +527,7 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
+    isAutomation: v.optional(v.boolean()),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])

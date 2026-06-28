@@ -3561,17 +3561,29 @@ export default function ChatExperience({
     const previousAutomation = selectedAutomation
     const nextAutomation = { ...selectedAutomation, modelId }
     setSelectedAutomation(nextAutomation)
+    setSelectedActModel(modelId)
+    setSelectedModels([modelId])
     try {
       const res = await overlayAppClient.automations.updateResponse({
         automationId: selectedAutomation._id,
         modelId,
       })
       if (!res.ok) throw new Error('Failed to save automation model')
-      window.dispatchEvent(new Event('overlay:automations-updated'))
+      if (activeChatId) {
+        await overlayAppClient.conversations.updateResponse({
+          conversationId: activeChatId,
+          actModelId: modelId,
+          askModelIds: [modelId],
+          lastMode: 'act',
+        })
+      }
     } catch {
       setSelectedAutomation(previousAutomation)
+      const fallbackModelId = previousAutomation.modelId ?? selectedActModel
+      setSelectedActModel(fallbackModelId)
+      setSelectedModels([fallbackModelId])
     }
-  }, [selectedAutomation])
+  }, [selectedAutomation, activeChatId, selectedActModel, setSelectedActModel, setSelectedModels])
 
   const headerTitleLabel =
     selectedAutomation?.name ||

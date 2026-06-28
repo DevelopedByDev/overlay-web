@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
+import { getInternalApiBaseUrl } from '@/server/web/app-url'
 
 export const maxDuration = 800
 
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     const result = await automationService.runAutomation({
       runId: body.runId,
       serviceUserId: serviceAuth.userId,
+      baseUrl: getInternalApiBaseUrl(request),
     })
     return NextResponse.json(result)
   } catch (error) {

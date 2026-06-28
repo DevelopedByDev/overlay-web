@@ -21,6 +21,7 @@ export type ScheduledAutomationTurn = {
   conversationId?: Id<'conversations'>
   turnId: string
   scheduledFor: number
+  baseUrl?: string
 }
 
 const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
@@ -100,6 +101,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
+      isAutomation: true,
     },
     { throwOnError: true },
   )
@@ -119,8 +121,9 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     method: 'POST',
     path,
   })
+  const baseUrl = input.baseUrl || getBaseUrl()
   try {
-    const response = await fetch(`${getBaseUrl()}${path}`, {
+    const response = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
