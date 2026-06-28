@@ -399,10 +399,12 @@ export async function executeCreateAutomation(
   },
 ) {
   try {
+    const automationId = options.automationId?.trim()
     const res = await callInternalApi(
       '/api/v1/automations',
       {
         ...input,
+        ...(automationId ? { automationId } : {}),
         projectId: input.projectId ?? options.projectId,
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
@@ -410,14 +412,17 @@ export async function executeCreateAutomation(
       },
       options.accessToken,
       options.baseUrl,
-      { forwardCookie: options.forwardCookie },
+      {
+        ...(automationId ? { method: 'PATCH' as const } : {}),
+        forwardCookie: options.forwardCookie,
+      },
     )
     if (!res.ok) {
       const err = await res.json().catch((_error) => ({ error: 'Failed to create automation' }))
       return { success: false, error: (err as { error?: string }).error ?? 'Failed to create automation' }
     }
     const data = (await res.json()) as { id?: string }
-    return { success: true, automationId: data.id }
+    return { success: true, automationId: automationId ?? data.id }
   } catch (err) {
     return {
       success: false,

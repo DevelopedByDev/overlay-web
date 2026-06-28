@@ -84,6 +84,7 @@ type UpdateAutomationBody = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
 
@@ -325,6 +326,7 @@ export class AutomationService {
         projectId: body.projectId,
         modelId: body.modelId,
         graphSource: body.graphSource,
+        sourceConversationId: body.sourceConversationId as Id<'conversations'> | undefined,
         concurrencyPolicy: body.concurrencyPolicy,
       })
       if (before) {

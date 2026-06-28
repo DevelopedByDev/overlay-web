@@ -67,6 +67,7 @@ export async function prepareActTooling(params: {
   accessToken?: string
   automationExecution?: boolean
   automationMode?: boolean
+  automationId?: string
   baseUrl: string
   conversationId?: string
   conversationProjectId?: string
@@ -117,6 +118,7 @@ export async function prepareActTooling(params: {
         serverSecret: params.serverSecret,
         conversationId: params.conversationId,
         turnId: params.turnId,
+        automationId: params.automationId,
         projectId: params.conversationProjectId,
         baseUrl: params.baseUrl,
         allowedToolIds: allowedOverlayToolIds,

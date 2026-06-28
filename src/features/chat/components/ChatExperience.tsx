@@ -28,7 +28,7 @@ import {
   ChatExperienceHeader,
 } from '@overlay/chat-react'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
+import { AUTOMATIONS_UPDATED_EVENT, normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import { useQuery } from '@/components/providers/convex-hooks'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
@@ -1640,37 +1640,30 @@ export default function ChatExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
+  const refreshSelectedAutomation = useCallback(async (options?: { showLoading?: boolean }) => {
     if (mode !== 'automate' || !automationIdParam) {
       setSelectedAutomation(null)
       setSelectedAutomationLoading(false)
       return
     }
-
-    let cancelled = false
-    setSelectedAutomationLoading(true)
-    void overlayAppClient.automations.getResponse({ automationId: automationIdParam }, {
-      credentials: 'same-origin',
-      cache: 'no-store',
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to load automation')
-        return await res.json() as AutomationDetail
+    if (options?.showLoading !== false) setSelectedAutomationLoading(true)
+    try {
+      const res = await overlayAppClient.automations.getResponse({ automationId: automationIdParam }, {
+        credentials: 'same-origin',
+        cache: 'no-store',
       })
-      .then((automation) => {
-        if (!cancelled) setSelectedAutomation(automation)
-      })
-      .catch(() => {
-        if (!cancelled) setSelectedAutomation(null)
-      })
-      .finally(() => {
-        if (!cancelled) setSelectedAutomationLoading(false)
-      })
-
-    return () => {
-      cancelled = true
+      if (!res.ok) throw new Error('Failed to load automation')
+      setSelectedAutomation(await res.json() as AutomationDetail)
+    } catch {
+      setSelectedAutomation(null)
+    } finally {
+      setSelectedAutomationLoading(false)
     }
   }, [automationIdParam, mode])
+
+  useEffect(() => {
+    void refreshSelectedAutomation()
+  }, [refreshSelectedAutomation])
 
   useEffect(() => {
     if (mode !== 'automate' || !automationConversationId) return
@@ -2652,6 +2645,7 @@ export default function ChatExperience({
         turnId,
         mode,
         automationMode: mode === 'automate',
+        ...(mode === 'automate' && automationIdParam ? { automationId: automationIdParam } : {}),
         ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
         ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
       }
@@ -2677,6 +2671,7 @@ export default function ChatExperience({
     [
       activeChatId,
       activeChatTitle,
+      automationIdParam,
       ensureConversationRuntime,
       completeSession,
       loadChats,
@@ -3174,6 +3169,7 @@ export default function ChatExperience({
       turnId: textTurnId,
       mode: requestMode,
       automationMode: requestMode === 'automate',
+      ...(requestMode === 'automate' && automationIdParam ? { automationId: automationIdParam } : {}),
       ...(indexedFileNames.length > 0
         ? { indexedFileNames, indexedAttachments: indexedAttachments }
         : {}),
@@ -3182,6 +3178,14 @@ export default function ChatExperience({
       ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
       requestedToolIds: selectedToolIdsSnapshot,
       memoryEnabled: memoryEnabledSnapshot,
+    }
+
+    const refreshAfterActTextTurn = async () => {
+      await loadSubscription()
+      if (requestMode === 'automate' && automationIdParam) {
+        await refreshSelectedAutomation({ showLoading: false })
+        window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+      }
     }
 
     startActTextStream({
@@ -3197,7 +3201,7 @@ export default function ChatExperience({
       isChatActive: (id) => isStreamChatActive(id, temporaryChatSnapshot),
       completeSession: completeSessionForStream,
       loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
-      loadSubscription,
+      loadSubscription: refreshAfterActTextTurn,
       onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
       logPrefix: multiText ? 'Act multi' : 'Act',
     })
