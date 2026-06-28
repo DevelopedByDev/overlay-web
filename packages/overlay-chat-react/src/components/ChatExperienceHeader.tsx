@@ -397,9 +397,8 @@ export function ChatExperienceHeader({
         </div>
       ) : null}
 
-      <div className={`flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2 ${
-        appMode === 'automate' || !showAutomationChatTab ? 'hidden' : ''
-      }`}>
+      {appMode === 'automate' || !showAutomationChatTab ? null : (
+      <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
         {generationMode === 'video' ? (
           <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
             <button
@@ -679,6 +678,7 @@ export function ChatExperienceHeader({
           {renderExportMenu()}
         </div>
       </div>
+      )}
     </AppScreenHeader>
   )
 }
