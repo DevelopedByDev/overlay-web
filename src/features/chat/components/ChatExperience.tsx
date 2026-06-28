@@ -3588,6 +3588,9 @@ export default function ChatExperience({
 
   const automationHeaderModels = selectableTextModels
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
+    // Mark the model as user-chosen so the new-chat-surface default-model effect
+    // does not immediately reset it back to the account default.
+    userAskModelOverrideRef.current = true
     // Always reflect the choice in local model state so a brand-new automation
     // (no saved doc yet) uses it when the automation is created from the first message.
     setSelectedActModel(modelId)
