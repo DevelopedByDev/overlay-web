@@ -412,6 +412,26 @@ test('automations create/update/test/run preserve validation and auth error shap
   assert.equal(updateResponse.status, 400)
   assert.deepEqual(await readJson(updateResponse), { error: 'automationId required' })
 
+  t.mock.method(automationService, 'updateAutomation', async (args: Parameters<typeof automationService.updateAutomation>[0]) => {
+    assert.equal(args.userId, 'user_1')
+    assert.deepEqual(args.body, {
+      automationId: 'automation_1',
+      schedule: { kind: 'interval', intervalMinutes: 45 },
+    })
+    return { success: true }
+  })
+  const updateContext = context()
+  updateContext.parsedJson = {
+    automationId: 'automation_1',
+    schedule: { kind: 'interval', intervalMinutes: 45 },
+  }
+  const parsedBodyUpdateResponse = await automations.PATCH(
+    request('/api/v1/automations', { method: 'PATCH', body: JSON.stringify({}) }),
+    updateContext,
+  )
+  assert.equal(parsedBodyUpdateResponse.status, 200)
+  assert.deepEqual(await readJson(parsedBodyUpdateResponse), { success: true })
+
   const testResponse = await testRoute.POST(
     request('/api/v1/automations/test', { method: 'POST', body: JSON.stringify({}) }),
     context(),
@@ -425,7 +445,7 @@ test('automations create/update/test/run preserve validation and auth error shap
   assert.equal(runResponse.status, 401)
   assert.deepEqual(await readJson(runResponse), { error: 'Unauthorized' })
 
-  t.mock.method(automationService, 'runAutomation', async (args) => {
+  t.mock.method(automationService, 'runAutomation', async (args: Parameters<typeof automationService.runAutomation>[0]) => {
     assert.equal(args.runId, 'run_1')
     assert.equal(args.serviceUserId, 'service_user_1')
     assert.equal(args.baseUrl, 'https://getoverlay.io')

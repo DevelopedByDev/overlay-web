@@ -8,7 +8,7 @@ import type {
   AutomationTestState,
   AutomationTimeZoneOption,
 } from '@overlay/app-core'
-import { WEEKDAY_LABELS } from '@overlay/app-core/automations'
+import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { AutomationGraphCanvas } from './graph-canvas'
 
 export interface AutomationModelOption {
@@ -158,7 +158,7 @@ export function AutomationEditorForm({
                       Every N minutes
                       <input
                         type="number"
-                        min={1}
+                        min={MIN_AUTOMATION_INTERVAL_MINUTES}
                         value={intervalMinutes}
                         onChange={(event) => onIntervalMinutesChange(Number(event.target.value))}
                         className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"

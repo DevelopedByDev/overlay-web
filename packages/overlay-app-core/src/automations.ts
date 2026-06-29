@@ -6,6 +6,7 @@ export type AutomationDetail = AutomationSummary
 export type AutomationDetailTab = 'chat' | 'edit'
 export type AutomationSaveState = 'idle' | 'saving' | 'saved' | 'error'
 export type AutomationTestState = 'idle' | 'running' | 'success' | 'error'
+export const MIN_AUTOMATION_INTERVAL_MINUTES = 15
 
 export interface AutomationTimeZoneOption {
   label: string
@@ -364,7 +365,7 @@ export function buildAutomationSchedule(input: {
   if (input.kind === 'interval') {
     return {
       kind: 'interval',
-      intervalMinutes: Math.max(1, Math.floor(input.intervalMinutes) || 60),
+      intervalMinutes: Math.max(MIN_AUTOMATION_INTERVAL_MINUTES, Math.floor(input.intervalMinutes) || 60),
     }
   }
   const nowParts = getTimeZoneParts(input.nowMs ?? Date.now(), input.timeZone)

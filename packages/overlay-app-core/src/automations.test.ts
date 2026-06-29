@@ -70,6 +70,17 @@ test('automation schedule helpers preserve interval and local time conversion co
   )
   assert.deepEqual(
     buildAutomationSchedule({
+      kind: 'interval',
+      intervalMinutes: 5,
+      time: '09:00',
+      dayOfWeek: 1,
+      dayOfMonth: 1,
+      timeZone: 'UTC',
+    }),
+    { kind: 'interval', intervalMinutes: 15 },
+  )
+  assert.deepEqual(
+    buildAutomationSchedule({
       kind: 'daily',
       intervalMinutes: 60,
       time: '09:15',

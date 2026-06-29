@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 
+async function readJsonBody(request: NextRequest, context: AppApiRouteContext) {
+  if (Object.keys(context.parsedJson).length > 0) return context.parsedJson
+  return await request.json()
+}
+
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -29,7 +34,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request, context)
     const { auth } = context
     const result = await automationService.createAutomation({
       userId: auth.userId,
@@ -46,7 +51,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request, context)
     const { auth } = context
     const result = await automationService.updateAutomation({
       userId: auth.userId,
@@ -66,7 +71,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     let body: { accessToken?: string; userId?: string; automationId?: string } = {}
     const contentType = request.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
-      body = await request.json().catch((_error) => ({}))
+      body = await readJsonBody(request, context).catch((_error) => ({}))
     }
     const { auth } = context
     const result = await automationService.deleteAutomation({

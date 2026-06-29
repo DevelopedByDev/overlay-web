@@ -79,8 +79,16 @@ export function AutomationEditorPanel({
       const request = buildAutomationUpdateRequest({ automation, draft })
       const res = await overlayAppClient.automations.updateResponse(request)
       if (!res.ok) throw new Error('Failed to save automation')
-      const updated = applyAutomationUpdate(automation, request)
-      setDraft((current) => ({ ...current, graphSource: request.graphSource ?? current.graphSource }))
+      const refreshedRes = await overlayAppClient.automations.getResponse(
+        { automationId: automation._id },
+        { credentials: 'same-origin', cache: 'no-store' },
+      )
+      if (!refreshedRes.ok) throw new Error('Failed to reload saved automation')
+      const refreshed = await refreshedRes.json() as AutomationDetail
+      const updated = refreshed?._id === automation._id
+        ? refreshed
+        : applyAutomationUpdate(automation, request)
+      setDraft(automationEditorDraftFromDetail(updated, DEFAULT_MODEL_ID))
       onSaved(updated)
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       setSaveState('saved')
