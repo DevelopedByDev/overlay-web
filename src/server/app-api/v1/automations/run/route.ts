@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
@@ -7,19 +8,29 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 
 export const maxDuration = 800
 
-export async function POST(request: NextRequest) {
+async function resolveAutomationRunServiceAuth(
+  request: NextRequest,
+  context?: AppApiRouteContext,
+): Promise<{ userId: string } | null> {
+  if (context?.auth.authType === 'service') {
+    return { userId: context.auth.userId }
+  }
+
+  const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+  if (!serviceAuthHeader) return null
+  return await verifyServiceAuthToken(
+    serviceAuthHeader,
+    {
+      method: request.method,
+      path: request.nextUrl.pathname,
+      replayConsumer: consumeServiceAuthReplayNonce,
+    },
+  )
+}
+
+export async function POST(request: NextRequest, context?: AppApiRouteContext) {
   try {
-    const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
-    const serviceAuth = serviceAuthHeader
-      ? await verifyServiceAuthToken(
-          serviceAuthHeader,
-          {
-            method: request.method,
-            path: request.nextUrl.pathname,
-            replayConsumer: consumeServiceAuthReplayNonce,
-          },
-        )
-      : null
+    const serviceAuth = await resolveAutomationRunServiceAuth(request, context)
     if (!serviceAuth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

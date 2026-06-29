@@ -3,6 +3,7 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { automationService } from '@/server/automations/http'
 import { convex } from '@/server/database/convex'
 import { fileService } from '@/server/files/http'
 
@@ -390,7 +391,7 @@ test('integrations default list reads Composio v3 connected accounts by user id'
   })
 })
 
-test('automations create/update/test/run preserve validation and auth error shapes', async () => {
+test('automations create/update/test/run preserve validation and auth error shapes', async (t) => {
   const automations = await import('./automations/route')
   const testRoute = await import('./automations/test/route')
   const runRoute = await import('./automations/run/route')
@@ -423,6 +424,28 @@ test('automations create/update/test/run preserve validation and auth error shap
   )
   assert.equal(runResponse.status, 401)
   assert.deepEqual(await readJson(runResponse), { error: 'Unauthorized' })
+
+  t.mock.method(automationService, 'runAutomation', async (args) => {
+    assert.equal(args.runId, 'run_1')
+    assert.equal(args.serviceUserId, 'service_user_1')
+    assert.equal(args.baseUrl, 'https://getoverlay.io')
+    return { success: true, conversationId: 'conversation_1' as never }
+  })
+  const serviceContext = context()
+  serviceContext.auth = {
+    userId: 'service_user_1',
+    accessToken: '',
+    authType: 'service',
+  }
+  const serviceRunResponse = await runRoute.POST(
+    request('/api/v1/automations/run', { method: 'POST', body: JSON.stringify({ runId: 'run_1' }) }),
+    serviceContext,
+  )
+  assert.equal(serviceRunResponse.status, 200)
+  assert.deepEqual(await readJson(serviceRunResponse), {
+    success: true,
+    conversationId: 'conversation_1',
+  })
 })
 
 test('billing customer routes preserve unauthenticated/invalid body response shapes', async (t) => {

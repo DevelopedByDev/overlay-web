@@ -19,17 +19,18 @@ function summarizeError(error: unknown): string {
   }
 }
 
-function getAutomationRunnerBaseUrl(): string {
+export function getAutomationRunnerBaseUrl(): string {
   const explicit = process.env.AUTOMATION_RUNNER_BASE_URL?.trim()
   if (explicit) return explicit.replace(/\/+$/, '')
 
-  const appUrl =
-    process.env.DEV_NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim()
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
   if (appUrl) return appUrl.replace(/\/+$/, '')
 
   const vercelUrl = process.env.VERCEL_URL?.trim()
   if (vercelUrl) return `https://${vercelUrl}`.replace(/\/+$/, '')
+
+  const devAppUrl = process.env.DEV_NEXT_PUBLIC_APP_URL?.trim()
+  if (devAppUrl) return devAppUrl.replace(/\/+$/, '')
 
   return 'https://getoverlay.io'
 }
