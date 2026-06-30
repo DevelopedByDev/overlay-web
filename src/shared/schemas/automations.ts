@@ -28,7 +28,7 @@ export const DeleteAutomationRequest = z.object({
 
 export const RunAutomationRequest = z.object({
   ...AuthFields,
-  automationId: z.string().min(1),
+  runId: z.string().min(1),
 }).passthrough()
 
 export const TestAutomationRequest = z.object({
