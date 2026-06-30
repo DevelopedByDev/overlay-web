@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Code2, GitBranch } from 'lucide-react'
 import { AutomationFlowPreview, parseAutomationFlow } from './flow-utils'
 
 export function AutomationGraphCanvas({
@@ -21,9 +22,12 @@ export function AutomationGraphCanvas({
             {flow ? (
               <AutomationFlowPreview flow={flow} />
             ) : (
-              <p className="max-w-md text-sm text-[var(--muted)]">
-                Flowchart preview supports simple flowchart nodes and arrows. Open source to edit the workflow text.
-              </p>
+              <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                <GitBranch size={18} strokeWidth={1.75} className="text-[var(--muted)]" />
+                <p className="text-sm text-[var(--muted)]">
+                  Flowchart preview supports simple flowchart nodes and arrows. Switch to Source to edit the workflow text.
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -34,6 +38,7 @@ export function AutomationGraphCanvas({
                 <p className="text-sm font-medium text-[var(--foreground)]">Source</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">Edit flowchart source. Save changes persists it.</p>
               </div>
+              <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--muted)]">mmd</span>
             </div>
             <textarea
               value={source}
@@ -44,15 +49,28 @@ export function AutomationGraphCanvas({
           </div>
         ) : null}
       </div>
-      <label className="absolute bottom-5 right-5 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-xs font-medium text-[var(--foreground)] shadow-sm">
-        <input
-          type="checkbox"
-          checked={showSource}
-          onChange={(event) => setShowSource(event.target.checked)}
-          className="h-3.5 w-3.5 accent-[var(--foreground)]"
-        />
-        Source
-      </label>
+      <div className="absolute bottom-5 right-5 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] p-1 text-xs font-medium shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowSource(false)}
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+            !showSource ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+          }`}
+        >
+          <GitBranch size={12} />
+          Preview
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSource(true)}
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+            showSource ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+          }`}
+        >
+          <Code2 size={12} />
+          Source
+        </button>
+      </div>
     </div>
   )
 }
