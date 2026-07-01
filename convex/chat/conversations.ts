@@ -107,6 +107,29 @@ function normalizeConversationDoc<T extends {
   }
 }
 
+async function getLinkedAutomationConversationIds(
+  ctx: Pick<QueryCtx, 'db'>,
+  userId: string,
+  projectId?: string,
+): Promise<Set<string>> {
+  const automations = projectId
+    ? await ctx.db
+      .query('automations')
+      .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
+      .collect()
+    : await ctx.db
+      .query('automations')
+      .withIndex('by_userId_updatedAt', (q) => q.eq('userId', userId))
+      .collect()
+  const ids = new Set<string>()
+  for (const automation of automations) {
+    if (automation.userId !== userId || automation.deletedAt) continue
+    if (automation.sourceConversationId) ids.add(automation.sourceConversationId)
+    if (automation.conversationId) ids.add(automation.conversationId)
+  }
+  return ids
+}
+
 type MessageDoc = Doc<'conversationMessages'>
 type MessageDeltaDoc = Doc<'conversationMessageDeltas'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
@@ -349,15 +372,19 @@ export const list = query({
     } catch {
       return []
     }
-    const all = await ctx.db
-      .query('conversations')
-      .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
-      .order('desc')
-      .take(200)
+    const [all, automationConversationIds] = await Promise.all([
+      ctx.db
+        .query('conversations')
+        .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
+        .order('desc')
+        .take(200),
+      getLinkedAutomationConversationIds(ctx, userId),
+    ])
     return all
       .map(normalizeConversationDoc)
       .filter((c) => !c.projectId)
       .filter((c) => !c.isAutomation)
+      .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
       .slice(0, 100)
@@ -379,14 +406,19 @@ export const listByProject = query({
     } catch {
       return []
     }
-    const conversations = await ctx.db
-      .query('conversations')
-      .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
-      .order('desc')
-      .collect()
+    const [conversations, automationConversationIds] = await Promise.all([
+      ctx.db
+        .query('conversations')
+        .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
+        .order('desc')
+        .collect(),
+      getLinkedAutomationConversationIds(ctx, userId, projectId),
+    ])
     return conversations
       .map(normalizeConversationDoc)
       .filter((conversation) => conversation.userId === userId)
+      .filter((conversation) => !conversation.isAutomation)
+      .filter((conversation) => !automationConversationIds.has(conversation._id))
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
       .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
       .sort((a, b) => (b.lastModified ?? b.createdAt) - (a.lastModified ?? a.createdAt))
