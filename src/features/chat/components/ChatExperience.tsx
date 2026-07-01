@@ -1852,9 +1852,6 @@ export default function ChatExperience({
     generationMode,
     hasAutomationContext,
     hoveredModelId,
-    selectedModels,
-    selectedActModel,
-    selectedAutomation?.modelId,
     syncModelQualitiesPosition,
   ])
 
