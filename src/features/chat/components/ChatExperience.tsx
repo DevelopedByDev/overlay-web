@@ -562,13 +562,15 @@ export default function ChatExperience({
     setSelectedModels(askModelIds)
     setSelectedActModel(actModelId)
     setAskModelSelectionMode(modeFromSettings)
+    // selectedModels/selectedActModel are intentionally excluded: this effect applies
+    // account defaults once when the new-chat surface mounts or settings change. Including
+    // them creates a feedback loop because the effect itself sets those values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeChatId,
     chatPrefsHydrated,
     isTemporaryChat,
     resolveAppDefaultChatModels,
-    selectedActModel,
-    selectedModels,
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,

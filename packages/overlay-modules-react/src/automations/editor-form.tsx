@@ -44,7 +44,7 @@ export interface AutomationEditorFormProps {
   onTimeChange: (value: string) => void
   onDayOfWeekChange: (value: number) => void
   onDayOfMonthChange: (value: number) => void
-  onGraphSourceChange: (value: string) => void
+  onGraphSourceChange?: (value: string) => void
   onModelIdChange: (value: string) => void
   onSave: () => void
   onTest: () => void
@@ -79,7 +79,6 @@ export function AutomationEditorForm({
   onTimeChange,
   onDayOfWeekChange,
   onDayOfMonthChange,
-  onGraphSourceChange,
   onModelIdChange,
   onSave,
   onTest,
@@ -244,10 +243,7 @@ export function AutomationEditorForm({
         </SettingsCard>
 
         <SettingsCard title="Flow">
-          <AutomationGraphCanvas
-            source={graphSource}
-            onSourceChange={onGraphSourceChange}
-          />
+          <AutomationGraphCanvas source={graphSource} />
         </SettingsCard>
 
         <SettingsCard title="Test">
